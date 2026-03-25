@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
+
+declare const __APP_VERSION__: string
 import { api, Task } from './api/client'
 import TaskList from './components/TaskList'
 import TaskDetail from './components/TaskDetail'
@@ -95,7 +97,10 @@ export default function App() {
   return (
     <div style={styles.app}>
       <header style={styles.header}>
-        <h1 style={styles.title}>BaumAgent</h1>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+          <h1 style={styles.title}>BaumAgent</h1>
+          <span style={{ color: '#475569', fontSize: '12px', fontWeight: 400 }}>v{__APP_VERSION__}</span>
+        </div>
         <button style={styles.newTaskBtn} onClick={() => setShowForm(true)}>
           + New Task
         </button>
