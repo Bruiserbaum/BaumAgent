@@ -1,6 +1,8 @@
 services:
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: baumagent-api
     restart: unless-stopped
     depends_on:
@@ -12,7 +14,6 @@ services:
     volumes:
       - ./data/db:/app/data
       - ./data/repos:/app/repos
-      - ./frontend/dist:/app/static
     environment:
       DATABASE_URL: sqlite:////app/data/baumAgent.db
       REDIS_URL: redis://redis:6379/0
@@ -24,7 +25,9 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
 
   worker:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: baumagent-worker
     restart: unless-stopped
     depends_on:

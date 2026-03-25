@@ -37,36 +37,23 @@ OLLAMA_BASE_URL=http://ollama:11434 # Change if Ollama runs elsewhere
 
 Generate a GitHub token at: https://github.com/settings/tokens → Classic → check `repo`
 
-### 3. Build the frontend
-
-This step compiles the React UI into a static bundle served by the API container. Only needs to be re-run when you update the frontend code.
-
-```bash
-cd frontend
-npm install
-npm run build
-cd ..
-```
-
-> **Node.js not installed?** On Debian/Ubuntu: `sudo apt install nodejs npm` or use [nvm](https://github.com/nvm-sh/nvm).
-
-### 4. Create data directories
+### 3. Create data directories
 
 ```bash
 mkdir -p data/db data/repos data/redis
 ```
 
-### 5. Start the stack
+### 4. Start the stack
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 ```
 
-This starts three containers: `baumagent-api`, `baumagent-worker`, and `baumagent-redis`.
+The `--build` flag triggers the multi-stage Docker build, which compiles the React frontend automatically using Node.js inside the build container — no Node.js required on the host. This starts three containers: `baumagent-api`, `baumagent-worker`, and `baumagent-redis`.
 
 The UI is available at `http://your-server-ip:8100`.
 
-### 6. Verify it's running
+### 5. Verify it's running
 
 ```bash
 docker compose logs -f
@@ -101,7 +88,7 @@ docker compose up -d --build
 3. Under **Environment variables**, add all values from `.env.example`
 4. Click **Deploy the stack**
 
-> The frontend `dist/` folder must be built and present in the repo or on the host before deploying. Either commit the built `dist/` folder, or SSH into the host and run `npm install && npm run build` inside the `frontend/` directory before first deploy.
+> The frontend is built automatically during the Docker image build — no Node.js needed on the Portainer host.
 
 ---
 
