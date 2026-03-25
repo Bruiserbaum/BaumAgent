@@ -1,0 +1,61 @@
+services:
+  api:
+    build: ./backend
+    container_name: baumagent-api
+    restart: unless-stopped
+    depends_on:
+      - redis
+    networks:
+      - baumagent
+    ports:
+      - "8100:8000"
+    volumes:
+      - ./data/db:/app/data
+      - ./data/repos:/app/repos
+      - ./frontend/dist:/app/static
+    environment:
+      DATABASE_URL: sqlite:////app/data/baumAgent.db
+      REDIS_URL: redis://redis:6379/0
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_USER_NAME: ${GITHUB_USER_NAME:-BaumAgent}
+      GITHUB_USER_EMAIL: ${GITHUB_USER_EMAIL:-baumagent@localhost}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+
+  worker:
+    build: ./backend
+    container_name: baumagent-worker
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - api
+    networks:
+      - baumagent
+    command: python -m worker.worker_entrypoint
+    volumes:
+      - ./data/db:/app/data
+      - ./data/repos:/app/repos
+    environment:
+      DATABASE_URL: sqlite:////app/data/baumAgent.db
+      REDIS_URL: redis://redis:6379/0
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_USER_NAME: ${GITHUB_USER_NAME:-BaumAgent}
+      GITHUB_USER_EMAIL: ${GITHUB_USER_EMAIL:-baumagent@localhost}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+
+  redis:
+    image: redis:7-alpine
+    container_name: baumagent-redis
+    restart: unless-stopped
+    networks:
+      - baumagent
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --save 60 1 --loglevel warning
+
+networks:
+  baumagent:
+    name: baumagent
