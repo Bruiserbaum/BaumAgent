@@ -83,11 +83,12 @@ const errorStyle: React.CSSProperties = {
   marginBottom: '12px',
 }
 
-// Speech recognition type shim
+// Speech recognition type shim — use any-based constructor to avoid DOM lib variance
+/* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
   interface Window {
-    SpeechRecognition: typeof SpeechRecognition
-    webkitSpeechRecognition: typeof SpeechRecognition
+    SpeechRecognition: new () => any
+    webkitSpeechRecognition: new () => any
   }
 }
 
@@ -111,7 +112,7 @@ export default function TaskSubmitForm({ onClose, onCreated }: Props) {
   // Speech recognition state
   const [isRecording, setIsRecording] = useState(false)
   const [speechSupported, setSpeechSupported] = useState(false)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const recognitionRef = useRef<any>(null)
   const formRef = useRef<HTMLFormElement>(null)
 
   useEffect(() => {
@@ -200,7 +201,7 @@ export default function TaskSubmitForm({ onClose, onCreated }: Props) {
     recognition.interimResults = false
     recognition.lang = 'en-US'
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
+    recognition.onresult = (event: any) => {
       const transcript = Array.from(event.results)
         .slice(event.resultIndex)
         .map(r => r[0].transcript)
