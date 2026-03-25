@@ -6,14 +6,41 @@ A self-hosted AI agent portal that autonomously completes software engineering t
 
 ## Quick Start
 
+### Prerequisites
+- Docker + Docker Compose
+- Node.js 18+ (for building the frontend — only needed once)
+- Git
+
+### 1. Clone the repo
+
 ```bash
-git clone https://github.com/youruser/BaumAgent
+git clone https://github.com/Bruiserbaum/BaumAgent.git
 cd BaumAgent
-cp .env.example .env
-# Fill in your keys in .env
 ```
 
-Build the frontend:
+### 2. Configure environment
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and fill in your keys:
+
+```env
+ANTHROPIC_API_KEY=sk-ant-...       # Optional — leave blank if using OpenAI or Ollama only
+OPENAI_API_KEY=sk-...              # Optional — leave blank if using Anthropic or Ollama only
+GITHUB_TOKEN=ghp_...               # Required — needs repo + pull_request scope
+GITHUB_USER_NAME=BaumAgent         # Name shown on commits
+GITHUB_USER_EMAIL=you@example.com  # Email shown on commits
+OLLAMA_BASE_URL=http://ollama:11434 # Change if Ollama runs elsewhere
+```
+
+Generate a GitHub token at: https://github.com/settings/tokens → Classic → check `repo`
+
+### 3. Build the frontend
+
+This step compiles the React UI into a static bundle served by the API container. Only needs to be re-run when you update the frontend code.
+
 ```bash
 cd frontend
 npm install
@@ -21,12 +48,60 @@ npm run build
 cd ..
 ```
 
-Start everything:
+> **Node.js not installed?** On Debian/Ubuntu: `sudo apt install nodejs npm` or use [nvm](https://github.com/nvm-sh/nvm).
+
+### 4. Create data directories
+
+```bash
+mkdir -p data/db data/repos data/redis
+```
+
+### 5. Start the stack
+
 ```bash
 docker compose up -d
 ```
 
-The UI is available at `http://localhost:8100`.
+This starts three containers: `baumagent-api`, `baumagent-worker`, and `baumagent-redis`.
+
+The UI is available at `http://your-server-ip:8100`.
+
+### 6. Verify it's running
+
+```bash
+docker compose logs -f
+```
+
+You should see `Uvicorn running on http://0.0.0.0:8000` from the api container and `Worker rq:worker` from the worker container.
+
+---
+
+## Updating
+
+```bash
+git pull
+cd frontend && npm run build && cd ..
+docker compose pull
+docker compose up -d --build
+```
+
+---
+
+## Deploying via Portainer
+
+1. Go to **Stacks → Add stack → Repository**
+2. Fill in:
+
+| Field | Value |
+|-------|-------|
+| Repository URL | `https://github.com/Bruiserbaum/BaumAgent` |
+| Repository reference | `refs/heads/main` |
+| Compose path | `docker-compose.yml` |
+
+3. Under **Environment variables**, add all values from `.env.example`
+4. Click **Deploy the stack**
+
+> The frontend `dist/` folder must be built and present in the repo or on the host before deploying. Either commit the built `dist/` folder, or SSH into the host and run `npm install && npm run build` inside the `frontend/` directory before first deploy.
 
 ---
 
