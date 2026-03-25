@@ -39,6 +39,10 @@ class Task(Base):
     commit_sha = Column(String, nullable=True)
     error_message = Column(Text, nullable=True)
     log = Column(Text, default="", nullable=False)
+    task_type = Column(String, default="code", nullable=False)
+    images = Column(Text, default="[]", nullable=False)
+    output_file = Column(String, nullable=True)
+    output_format = Column(String, nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +55,8 @@ class TaskCreate(BaseModel):
     base_branch: str = "main"
     llm_backend: str = "anthropic"
     llm_model: str = "claude-opus-4-6"
+    task_type: str = "code"
+    output_format: str | None = None
 
 
 class TaskRead(BaseModel):
@@ -70,5 +76,8 @@ class TaskRead(BaseModel):
     commit_sha: Optional[str] = None
     error_message: Optional[str] = None
     log: str
+    task_type: str
+    output_file: Optional[str] = None
+    output_format: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

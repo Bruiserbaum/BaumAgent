@@ -1,7 +1,7 @@
-from typing import Any
+from typing import Any, Union
 import anthropic
 
-from services.llm.base import ToolDefinition
+from services.llm.base import ToolDefinition, InitialMessage
 
 
 class AnthropicClient:
@@ -9,10 +9,30 @@ class AnthropicClient:
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
         self._model = model
 
+    def _build_content(self, initial_message: InitialMessage) -> list[dict]:
+        """Convert initial_message (str or content-block list) to Anthropic content blocks."""
+        if isinstance(initial_message, str):
+            return [{"type": "text", "text": initial_message}]
+
+        blocks: list[dict] = []
+        for item in initial_message:
+            if item.get("type") == "text":
+                blocks.append({"type": "text", "text": item["text"]})
+            elif item.get("type") == "image":
+                blocks.append({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": item["media_type"],
+                        "data": item["data"],
+                    },
+                })
+        return blocks
+
     async def run_agent_loop(
         self,
         system: str,
-        initial_message: str,
+        initial_message: InitialMessage,
         tools: list[ToolDefinition],
         tool_executor: Any,
         log_fn: Any,
@@ -26,7 +46,8 @@ class AnthropicClient:
             for t in tools
         ]
 
-        messages: list[dict] = [{"role": "user", "content": initial_message}]
+        content = self._build_content(initial_message)
+        messages: list[dict] = [{"role": "user", "content": content}]
         final_text = ""
 
         while True:

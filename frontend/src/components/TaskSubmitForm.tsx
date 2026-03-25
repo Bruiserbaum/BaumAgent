@@ -1,4 +1,4 @@
-import { useState, useEffect, FormEvent } from 'react'
+import { useState, useEffect, useRef, FormEvent, DragEvent, ClipboardEvent } from 'react'
 import { api, ModelsResponse } from '../api/client'
 
 interface Props {
@@ -11,9 +11,11 @@ const card: React.CSSProperties = {
   border: '1px solid #0f3460',
   borderRadius: '10px',
   padding: '28px',
-  width: '520px',
+  width: '560px',
   maxWidth: '95vw',
   boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+  maxHeight: '90vh',
+  overflowY: 'auto',
 }
 
 const label: React.CSSProperties = {
@@ -40,6 +42,7 @@ const textarea: React.CSSProperties = {
   ...input,
   minHeight: '80px',
   resize: 'vertical',
+  marginBottom: '0',
 }
 
 const selectStyle: React.CSSProperties = {
@@ -80,18 +83,41 @@ const errorStyle: React.CSSProperties = {
   marginBottom: '12px',
 }
 
+// Speech recognition type shim
+declare global {
+  interface Window {
+    SpeechRecognition: typeof SpeechRecognition
+    webkitSpeechRecognition: typeof SpeechRecognition
+  }
+}
+
 export default function TaskSubmitForm({ onClose, onCreated }: Props) {
+  const [taskType, setTaskType] = useState<'code' | 'research'>('code')
   const [description, setDescription] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [baseBranch, setBaseBranch] = useState('main')
+  const [outputFormat, setOutputFormat] = useState<'pdf' | 'docx'>('pdf')
   const [backend, setBackend] = useState('anthropic')
   const [model, setModel] = useState('claude-opus-4-6')
   const [models, setModels] = useState<ModelsResponse>({ anthropic: [], openai: [], ollama: [] })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
+  // Image state
+  const [images, setImages] = useState<File[]>([])
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
+  const [isDragOver, setIsDragOver] = useState(false)
+
+  // Speech recognition state
+  const [isRecording, setIsRecording] = useState(false)
+  const [speechSupported, setSpeechSupported] = useState(false)
+  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const formRef = useRef<HTMLFormElement>(null)
+
   useEffect(() => {
     api.getModels().then(setModels).catch(() => {})
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    setSpeechSupported(!!SR)
   }, [])
 
   // When backend changes, default to first available model
@@ -102,20 +128,123 @@ export default function TaskSubmitForm({ onClose, onCreated }: Props) {
 
   const modelOptions = models[backend as keyof ModelsResponse] ?? []
 
+  // ------------------------------------------------------------------
+  // Image helpers
+  // ------------------------------------------------------------------
+
+  const addFiles = (files: FileList | File[]) => {
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
+    if (imageFiles.length === 0) return
+    const newImages = [...images, ...imageFiles]
+    setImages(newImages)
+    // Generate previews
+    imageFiles.forEach(file => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setImagePreviews(prev => [...prev, e.target?.result as string])
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const removeImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index))
+    setImagePreviews(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handlePaste = (e: ClipboardEvent<HTMLFormElement>) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    const imageItems: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        const file = items[i].getAsFile()
+        if (file) imageItems.push(file)
+      }
+    }
+    if (imageItems.length > 0) {
+      e.preventDefault()
+      addFiles(imageItems)
+    }
+  }
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = () => setIsDragOver(false)
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    if (e.dataTransfer.files) addFiles(e.dataTransfer.files)
+  }
+
+  // ------------------------------------------------------------------
+  // Speech recognition
+  // ------------------------------------------------------------------
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      recognitionRef.current?.stop()
+      setIsRecording(false)
+      return
+    }
+
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) return
+
+    const recognition = new SR()
+    recognition.continuous = true
+    recognition.interimResults = false
+    recognition.lang = 'en-US'
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      const transcript = Array.from(event.results)
+        .slice(event.resultIndex)
+        .map(r => r[0].transcript)
+        .join(' ')
+      setDescription(prev => prev ? prev + ' ' + transcript.trim() : transcript.trim())
+    }
+
+    recognition.onerror = () => {
+      setIsRecording(false)
+    }
+
+    recognition.onend = () => {
+      setIsRecording(false)
+    }
+
+    recognitionRef.current = recognition
+    recognition.start()
+    setIsRecording(true)
+  }
+
+  // ------------------------------------------------------------------
+  // Submit
+  // ------------------------------------------------------------------
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     if (!description.trim()) { setError('Description is required.'); return }
-    if (!repoUrl.trim()) { setError('Repo URL is required.'); return }
+    if (taskType === 'code' && !repoUrl.trim()) { setError('Repo URL is required for code tasks.'); return }
     setLoading(true)
     try {
-      await api.createTask({
-        description: description.trim(),
-        repo_url: repoUrl.trim(),
-        base_branch: baseBranch.trim() || 'main',
-        llm_backend: backend,
-        llm_model: model,
-      })
+      const formData = new FormData()
+      formData.append('description', description.trim())
+      formData.append('repo_url', taskType === 'code' ? repoUrl.trim() : '')
+      formData.append('base_branch', baseBranch.trim() || 'main')
+      formData.append('llm_backend', backend)
+      formData.append('llm_model', model)
+      formData.append('task_type', taskType)
+      if (taskType === 'research') {
+        formData.append('output_format', outputFormat)
+      }
+      images.forEach(img => formData.append('images', img))
+
+      await api.createTask(formData)
       onCreated()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create task.')
@@ -124,35 +253,189 @@ export default function TaskSubmitForm({ onClose, onCreated }: Props) {
     }
   }
 
+  // ------------------------------------------------------------------
+  // Render
+  // ------------------------------------------------------------------
+
+  const tabActive: React.CSSProperties = {
+    backgroundColor: '#0f3460',
+    color: '#7dd3fc',
+    border: '1px solid #1e4d8c',
+    borderRadius: '6px',
+    padding: '6px 18px',
+    cursor: 'pointer',
+    fontWeight: 700,
+    fontSize: '13px',
+  }
+
+  const tabInactive: React.CSSProperties = {
+    backgroundColor: 'transparent',
+    color: '#64748b',
+    border: '1px solid #334155',
+    borderRadius: '6px',
+    padding: '6px 18px',
+    cursor: 'pointer',
+    fontSize: '13px',
+  }
+
+  const micBtnStyle: React.CSSProperties = {
+    flexShrink: 0,
+    backgroundColor: isRecording ? '#7f1d1d' : '#1e293b',
+    border: `1px solid ${isRecording ? '#ef4444' : '#334155'}`,
+    borderRadius: '6px',
+    color: isRecording ? '#fca5a5' : '#94a3b8',
+    padding: '8px 10px',
+    cursor: speechSupported ? 'pointer' : 'not-allowed',
+    fontSize: '16px',
+    animation: isRecording ? 'micPulse 1s infinite' : undefined,
+  }
+
+  const dropZoneStyle: React.CSSProperties = {
+    border: `2px dashed ${isDragOver ? '#7dd3fc' : '#334155'}`,
+    borderRadius: '6px',
+    padding: '12px',
+    marginBottom: '14px',
+    backgroundColor: isDragOver ? '#0f2040' : '#0f172a',
+    transition: 'all 0.15s',
+    minHeight: '48px',
+  }
+
   return (
     <div style={card}>
+      <style>{`
+        @keyframes micPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+      `}</style>
       <h2 style={{ margin: '0 0 20px', color: '#7dd3fc', fontSize: '18px' }}>New Agent Task</h2>
+
+      {/* Task type toggle */}
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+        <button
+          type="button"
+          style={taskType === 'code' ? tabActive : tabInactive}
+          onClick={() => setTaskType('code')}
+        >
+          Code Task
+        </button>
+        <button
+          type="button"
+          style={taskType === 'research' ? tabActive : tabInactive}
+          onClick={() => setTaskType('research')}
+        >
+          Research Task
+        </button>
+      </div>
+
       {error && <div style={errorStyle}>{error}</div>}
-      <form onSubmit={handleSubmit}>
+
+      <form ref={formRef} onSubmit={handleSubmit} onPaste={handlePaste}>
+        {/* Description + mic */}
         <label style={label}>Description *</label>
-        <textarea
-          style={textarea}
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          placeholder="Describe what the agent should do..."
-        />
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', alignItems: 'flex-start' }}>
+          <textarea
+            style={{ ...textarea, flex: 1 }}
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            placeholder={taskType === 'research'
+              ? 'What would you like researched?'
+              : 'Describe what the agent should do...'}
+          />
+          <button
+            type="button"
+            style={micBtnStyle}
+            onClick={toggleRecording}
+            title={speechSupported
+              ? (isRecording ? 'Stop recording' : 'Start voice input')
+              : 'Speech recognition not supported in this browser'}
+          >
+            🎤
+          </button>
+        </div>
 
-        <label style={label}>Repository URL *</label>
-        <input
-          style={input}
-          type="url"
-          value={repoUrl}
-          onChange={e => setRepoUrl(e.target.value)}
-          placeholder="https://github.com/owner/repo"
-        />
+        {/* Image drop zone */}
+        <label style={label}>Images (optional)</label>
+        <div
+          style={dropZoneStyle}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {imagePreviews.length === 0 ? (
+            <div style={{ color: '#475569', fontSize: '13px', textAlign: 'center' }}>
+              Paste or drag images here
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {imagePreviews.map((src, i) => (
+                <div key={i} style={{ position: 'relative' }}>
+                  <img
+                    src={src}
+                    alt={`attachment ${i + 1}`}
+                    style={{ width: '72px', height: '72px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #334155' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(i)}
+                    style={{
+                      position: 'absolute',
+                      top: '-6px',
+                      right: '-6px',
+                      backgroundColor: '#7f1d1d',
+                      color: '#fca5a5',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '18px',
+                      height: '18px',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      lineHeight: '18px',
+                      textAlign: 'center',
+                      padding: 0,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-        <label style={label}>Base Branch</label>
-        <input
-          style={input}
-          value={baseBranch}
-          onChange={e => setBaseBranch(e.target.value)}
-          placeholder="main"
-        />
+        {/* Code-only fields */}
+        {taskType === 'code' && (
+          <>
+            <label style={label}>Repository URL *</label>
+            <input
+              style={input}
+              type="url"
+              value={repoUrl}
+              onChange={e => setRepoUrl(e.target.value)}
+              placeholder="https://github.com/owner/repo"
+            />
+
+            <label style={label}>Base Branch</label>
+            <input
+              style={input}
+              value={baseBranch}
+              onChange={e => setBaseBranch(e.target.value)}
+              placeholder="main"
+            />
+          </>
+        )}
+
+        {/* Research-only fields */}
+        {taskType === 'research' && (
+          <>
+            <label style={label}>Output Format</label>
+            <select
+              style={selectStyle}
+              value={outputFormat}
+              onChange={e => setOutputFormat(e.target.value as 'pdf' | 'docx')}
+            >
+              <option value="pdf">PDF</option>
+              <option value="docx">Word (.docx)</option>
+            </select>
+          </>
+        )}
 
         <label style={label}>LLM Backend</label>
         <select style={selectStyle} value={backend} onChange={e => setBackend(e.target.value)}>
@@ -179,7 +462,7 @@ export default function TaskSubmitForm({ onClose, onCreated }: Props) {
         <div style={btnRow}>
           <button type="button" style={btnSecondary} onClick={onClose}>Cancel</button>
           <button type="submit" style={btnPrimary} disabled={loading}>
-            {loading ? 'Submitting...' : 'Run Agent'}
+            {loading ? 'Submitting...' : taskType === 'research' ? 'Run Research' : 'Run Agent'}
           </button>
         </div>
       </form>

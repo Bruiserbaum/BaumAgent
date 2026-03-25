@@ -1,8 +1,8 @@
-from typing import Any
+from typing import Any, Union
 import json
 import openai
 
-from services.llm.base import ToolDefinition
+from services.llm.base import ToolDefinition, InitialMessage
 
 
 class OpenAIClient:
@@ -10,10 +10,27 @@ class OpenAIClient:
         self._client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url)
         self._model = model
 
+    def _build_content(self, initial_message: InitialMessage) -> str | list[dict]:
+        """Convert initial_message to OpenAI content format."""
+        if isinstance(initial_message, str):
+            return initial_message
+
+        blocks: list[dict] = []
+        for item in initial_message:
+            if item.get("type") == "text":
+                blocks.append({"type": "text", "text": item["text"]})
+            elif item.get("type") == "image":
+                data_uri = f"data:{item['media_type']};base64,{item['data']}"
+                blocks.append({
+                    "type": "image_url",
+                    "image_url": {"url": data_uri},
+                })
+        return blocks
+
     async def run_agent_loop(
         self,
         system: str,
-        initial_message: str,
+        initial_message: InitialMessage,
         tools: list[ToolDefinition],
         tool_executor: Any,
         log_fn: Any,
@@ -30,9 +47,10 @@ class OpenAIClient:
             for t in tools
         ]
 
+        content = self._build_content(initial_message)
         messages: list[dict] = [
             {"role": "system", "content": system},
-            {"role": "user", "content": initial_message},
+            {"role": "user", "content": content},
         ]
         final_text = ""
 

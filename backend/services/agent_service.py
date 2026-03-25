@@ -1,6 +1,10 @@
+import base64
+import json
 import os
+import re
 from datetime import datetime, timezone
 
+import httpx
 from sqlalchemy.orm import Session
 
 from config import Settings
@@ -11,7 +15,7 @@ from services.llm.base import ToolDefinition
 from services import search_service
 
 
-SYSTEM_PROMPT = (
+CODE_SYSTEM_PROMPT = (
     "You are BaumAgent, an autonomous AI software engineer. "
     "You have been given a task to complete on a GitHub repository. "
     "Use your tools to explore the codebase, understand what needs to change, "
@@ -21,7 +25,17 @@ SYSTEM_PROMPT = (
     "Always create clean, working code."
 )
 
-TOOL_DEFINITIONS: list[ToolDefinition] = [
+RESEARCH_SYSTEM_PROMPT = (
+    "You are BaumAgent, an autonomous AI research assistant. "
+    "You have been given a research task. "
+    "Use web_search to find information, read_url to read specific pages, "
+    "then call finish() with a structured report including title, sections "
+    "(with headings and content), and sources. "
+    "Be thorough and cite your sources."
+)
+
+# Tools available for code tasks
+CODE_TOOL_DEFINITIONS: list[ToolDefinition] = [
     {
         "name": "list_dir",
         "description": "List files and directories at the given path (relative to repo root).",
@@ -97,6 +111,20 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
         },
     },
     {
+        "name": "read_url",
+        "description": "Fetch and read content from a URL. Returns the first 3000 characters of the page text.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL to fetch.",
+                }
+            },
+            "required": ["url"],
+        },
+    },
+    {
         "name": "finish",
         "description": "Signal that the task is complete. Call this when all changes are done.",
         "parameters": {
@@ -112,6 +140,75 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
     },
 ]
 
+# Tools available for research tasks
+RESEARCH_TOOL_DEFINITIONS: list[ToolDefinition] = [
+    {
+        "name": "web_search",
+        "description": "Search the web using DuckDuckGo and return results.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The search query.",
+                }
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "read_url",
+        "description": "Fetch and read content from a URL. Returns the first 3000 characters of the page text.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "The URL to fetch.",
+                }
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "finish",
+        "description": (
+            "Signal that research is complete. Call this with a structured report. "
+            "sections is a list of {heading, content} objects. sources is a list of URLs."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "The title of the research report.",
+                },
+                "sections": {
+                    "type": "array",
+                    "description": "List of report sections.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "heading": {"type": "string"},
+                            "content": {"type": "string"},
+                        },
+                        "required": ["heading", "content"],
+                    },
+                },
+                "sources": {
+                    "type": "array",
+                    "description": "List of source URLs cited in the report.",
+                    "items": {"type": "string"},
+                },
+            },
+            "required": ["title", "sections", "sources"],
+        },
+    },
+]
+
+# Keep backward-compatible alias pointing to code tools
+TOOL_DEFINITIONS = CODE_TOOL_DEFINITIONS
+
 
 class AgentService:
     def __init__(self, task: Task, db: Session, settings: Settings) -> None:
@@ -120,6 +217,7 @@ class AgentService:
         self._settings = settings
         self._repo_path: str = ""
         self._finished: bool = False
+        self._research_result: dict | None = None
 
     # ------------------------------------------------------------------
     # Logging
@@ -192,10 +290,32 @@ class AgentService:
         except Exception as exc:
             return f"Search error: {exc}"
 
-    def _tool_finish(self, summary: str) -> str:
+    def _tool_read_url(self, url: str) -> str:
+        try:
+            resp = httpx.get(url, follow_redirects=True, timeout=10)
+            text = resp.text
+            # Strip HTML tags
+            text = re.sub(r'<[^>]+>', '', text)
+            # Collapse whitespace
+            text = re.sub(r'\s+', ' ', text).strip()
+            return text[:3000]
+        except Exception as exc:
+            return f"Error fetching URL: {exc}"
+
+    def _tool_finish_code(self, summary: str) -> str:
         self._finished = True
         self._log(f"[finish] {summary}")
         return "Task complete."
+
+    def _tool_finish_research(self, title: str, sections: list, sources: list) -> str:
+        self._finished = True
+        self._research_result = {
+            "title": title,
+            "sections": sections,
+            "sources": sources,
+        }
+        self._log(f"[finish] Research complete: {title}")
+        return "Research complete."
 
     # ------------------------------------------------------------------
     # Tool dispatcher
@@ -212,10 +332,47 @@ class AgentService:
             return self._tool_delete_file(args["path"])
         elif name == "web_search":
             return self._tool_web_search(args["query"])
+        elif name == "read_url":
+            return self._tool_read_url(args["url"])
         elif name == "finish":
-            return self._tool_finish(args.get("summary", ""))
+            task_type = getattr(self._task, "task_type", "code")
+            if task_type == "research":
+                return self._tool_finish_research(
+                    title=args.get("title", "Research Report"),
+                    sections=args.get("sections", []),
+                    sources=args.get("sources", []),
+                )
+            else:
+                return self._tool_finish_code(args.get("summary", ""))
         else:
             return f"Unknown tool: {name}"
+
+    # ------------------------------------------------------------------
+    # Build initial message (with optional image blocks)
+    # ------------------------------------------------------------------
+
+    def _build_initial_message(self, text: str):
+        """Return str if no images, else a list of content blocks."""
+        image_blocks = []
+        image_paths = json.loads(self._task.images or "[]")
+        for img_path in image_paths:
+            full_path = f"/app/data/{img_path}"
+            if os.path.exists(full_path):
+                with open(full_path, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode()
+                ext = img_path.rsplit('.', 1)[-1].lower()
+                media_type = {
+                    "png": "image/png",
+                    "jpg": "image/jpeg",
+                    "jpeg": "image/jpeg",
+                    "gif": "image/gif",
+                    "webp": "image/webp",
+                }.get(ext, "image/png")
+                image_blocks.append({"type": "image", "data": b64, "media_type": media_type})
+
+        if image_blocks:
+            return [{"type": "text", "text": text}] + image_blocks
+        return text  # plain str — no images
 
     # ------------------------------------------------------------------
     # Main run
@@ -232,6 +389,58 @@ class AgentService:
         db.commit()
         self._log("Task started.")
 
+        task_type = getattr(task, "task_type", "code")
+        llm_client = get_llm_client(task.llm_backend, task.llm_model, settings)
+        self._log(f"Starting agent loop with {task.llm_backend}/{task.llm_model}")
+
+        if task_type == "research":
+            await self._run_research(task, db, llm_client)
+        else:
+            await self._run_code(task, db, settings, llm_client)
+
+    async def _run_research(self, task, db, llm_client) -> None:
+        """Run a research task: web search + document generation, no GitHub."""
+        initial_message_text = (
+            f"Research task: {task.description}\n\n"
+            "Search the web thoroughly, read relevant pages, then call finish() "
+            "with a complete structured report."
+        )
+        initial_content = self._build_initial_message(initial_message_text)
+
+        self._finished = False
+        self._research_result = None
+
+        await llm_client.run_agent_loop(
+            system=RESEARCH_SYSTEM_PROMPT,
+            initial_message=initial_content,
+            tools=RESEARCH_TOOL_DEFINITIONS,
+            tool_executor=self.tool_executor,
+            log_fn=self._log,
+        )
+
+        # Generate document if research result is available
+        if self._research_result:
+            from services.research_service import generate_document
+            output_format = getattr(task, "output_format", None) or "pdf"
+            output_dir = f"/app/data/outputs/{task.id}"
+            self._log(f"Generating {output_format.upper()} document ...")
+            output_file = generate_document(
+                title=self._research_result["title"],
+                sections=self._research_result["sections"],
+                sources=self._research_result["sources"],
+                output_format=output_format,
+                output_dir=output_dir,
+            )
+            task.output_file = output_file
+            self._log(f"Document saved: {output_file}")
+
+        task.status = TaskStatus.COMPLETE
+        task.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        self._log("Done.")
+
+    async def _run_code(self, task, db, settings, llm_client) -> None:
+        """Run a code task: clone repo, apply changes, open PR."""
         # 2. Clone repo
         github_service = GitHubService(
             token=settings.github_token,
@@ -244,18 +453,17 @@ class AgentService:
 
         # 3. Run LLM agent loop
         self._finished = False
-        initial_message = (
+        initial_message_text = (
             f"Task: {task.description}\n"
             f"Repo: {task.repo_url}\n\n"
             "Start by listing the repository structure."
         )
-        llm_client = get_llm_client(task.llm_backend, task.llm_model, settings)
-        self._log(f"Starting agent loop with {task.llm_backend}/{task.llm_model}")
+        initial_content = self._build_initial_message(initial_message_text)
 
         await llm_client.run_agent_loop(
-            system=SYSTEM_PROMPT,
-            initial_message=initial_message,
-            tools=TOOL_DEFINITIONS,
+            system=CODE_SYSTEM_PROMPT,
+            initial_message=initial_content,
+            tools=CODE_TOOL_DEFINITIONS,
             tool_executor=self.tool_executor,
             log_fn=self._log,
         )

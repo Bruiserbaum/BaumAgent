@@ -42,6 +42,28 @@ function StatusBadge({ status }: { status: TaskStatus }) {
   )
 }
 
+function TypeBadge({ taskType }: { taskType: string }) {
+  const isResearch = taskType === 'research'
+  return (
+    <span
+      style={{
+        backgroundColor: isResearch ? '#0d3340' : '#1e293b',
+        color: isResearch ? '#38bdf8' : '#64748b',
+        borderRadius: '4px',
+        padding: '2px 7px',
+        fontSize: '11px',
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '0.06em',
+        border: `1px solid ${isResearch ? '#0369a1' : '#334155'}`,
+        flexShrink: 0,
+      }}
+    >
+      {isResearch ? 'Research' : 'Code'}
+    </span>
+  )
+}
+
 const row: React.CSSProperties = {
   backgroundColor: '#16213e',
   border: '1px solid #1e3a5f',
@@ -122,11 +144,13 @@ export default function TaskList({ tasks, onSelect, onDelete }: Props) {
           onClick={() => onSelect(task.id)}
         >
           <StatusBadge status={task.status} />
+          <TypeBadge taskType={task.task_type ?? 'code'} />
 
           <div style={descStyle}>
             <div style={descText}>{task.description}</div>
             <div style={meta}>
-              {task.repo_url} &nbsp;&bull;&nbsp; {timeAgo(task.created_at)}
+              {task.repo_url ? task.repo_url : 'Research task'}
+              &nbsp;&bull;&nbsp; {timeAgo(task.created_at)}
               &nbsp;&bull;&nbsp; {task.llm_backend}/{task.llm_model}
             </div>
           </div>

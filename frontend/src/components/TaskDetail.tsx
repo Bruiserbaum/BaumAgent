@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Task } from '../api/client'
+import { Task, api } from '../api/client'
 
 interface Props {
   task: Task
@@ -55,6 +55,17 @@ const terminal: React.CSSProperties = {
   lineHeight: 1.6,
 }
 
+const downloadBtn: React.CSSProperties = {
+  backgroundColor: '#0d3320',
+  color: '#4ade80',
+  border: '1px solid #166534',
+  borderRadius: '6px',
+  padding: '8px 18px',
+  cursor: 'pointer',
+  fontWeight: 600,
+  fontSize: '14px',
+}
+
 const STATUS_TERMINAL = new Set(['complete', 'failed'])
 
 export default function TaskDetail({ task }: Props) {
@@ -105,12 +116,27 @@ export default function TaskDetail({ task }: Props) {
     }
   }, [task.id, task.status, task.log])
 
+  const typeBadgeStyle: React.CSSProperties = {
+    backgroundColor: task.task_type === 'research' ? '#0d3340' : '#1e293b',
+    color: task.task_type === 'research' ? '#38bdf8' : '#94a3b8',
+    borderRadius: '4px',
+    padding: '2px 8px',
+    fontSize: '11px',
+    fontWeight: 700,
+    textTransform: 'uppercase',
+    letterSpacing: '0.06em',
+    border: `1px solid ${task.task_type === 'research' ? '#0369a1' : '#334155'}`,
+  }
+
   return (
     <div>
       <div style={card}>
-        <h2 style={{ margin: '0 0 16px', color: '#7dd3fc', fontSize: '18px' }}>
-          {task.description}
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <h2 style={{ margin: 0, color: '#7dd3fc', fontSize: '18px', flex: 1 }}>
+            {task.description}
+          </h2>
+          <span style={typeBadgeStyle}>{task.task_type === 'research' ? 'Research' : 'Code'}</span>
+        </div>
 
         <div style={fieldRow}>
           <span style={fieldLabel}>Status</span>
@@ -118,10 +144,12 @@ export default function TaskDetail({ task }: Props) {
             {task.status.toUpperCase()}
           </span>
         </div>
-        <div style={fieldRow}>
-          <span style={fieldLabel}>Repo</span>
-          <span style={fieldValue}>{task.repo_url}</span>
-        </div>
+        {task.repo_url && (
+          <div style={fieldRow}>
+            <span style={fieldLabel}>Repo</span>
+            <span style={fieldValue}>{task.repo_url}</span>
+          </div>
+        )}
         <div style={fieldRow}>
           <span style={fieldLabel}>Branch</span>
           <span style={fieldValue}>{task.base_branch}</span>
@@ -155,6 +183,15 @@ export default function TaskDetail({ task }: Props) {
             <a style={prLinkStyle} href={task.pr_url} target="_blank" rel="noopener noreferrer">
               PR #{task.pr_number} &rarr;
             </a>
+          </div>
+        )}
+
+        {task.output_file && (
+          <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: '#0d2818', border: '1px solid #166534', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <span style={{ color: '#4ade80', fontWeight: 600 }}>Research report ready</span>
+            <button style={downloadBtn} onClick={() => api.downloadTask(task.id)}>
+              &#x2B07; Download Report
+            </button>
           </div>
         )}
       </div>

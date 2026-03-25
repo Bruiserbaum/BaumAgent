@@ -17,6 +17,9 @@ export interface Task {
   commit_sha: string | null
   error_message: string | null
   log: string
+  task_type: string
+  output_file: string | null
+  output_format: string | null
 }
 
 export interface TaskCreate {
@@ -34,12 +37,8 @@ export interface ModelsResponse {
 }
 
 export const api = {
-  createTask: (data: TaskCreate): Promise<Task> =>
-    fetch(`${BASE}/tasks`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }).then(r => r.json()),
+  createTask: (data: FormData): Promise<Task> =>
+    fetch(`${BASE}/tasks`, { method: 'POST', body: data }).then(r => r.json()),
 
   getTasks: (): Promise<Task[]> =>
     fetch(`${BASE}/tasks`).then(r => r.json()),
@@ -52,4 +51,8 @@ export const api = {
 
   getModels: (): Promise<ModelsResponse> =>
     fetch(`${BASE}/models`).then(r => r.json()),
+
+  downloadTask: (id: string): void => {
+    window.open(`${BASE}/tasks/${id}/download`, '_blank')
+  },
 }

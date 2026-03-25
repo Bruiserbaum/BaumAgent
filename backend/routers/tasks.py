@@ -1,7 +1,10 @@
+import json
+import os
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile, File
+from fastapi.responses import FileResponse
 from redis import Redis
 from rq import Queue
 from sqlalchemy.orm import Session
@@ -21,17 +24,41 @@ def _get_redis_queue() -> Queue:
 
 
 @router.post("", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
-def create_task(
-    payload: TaskCreate,
-    db: Annotated[Session, Depends(get_db)],
+async def create_task(
+    description: str = Form(...),
+    repo_url: str = Form(""),
+    base_branch: str = Form("main"),
+    llm_backend: str = Form("anthropic"),
+    llm_model: str = Form("claude-opus-4-6"),
+    task_type: str = Form("code"),
+    output_format: str | None = Form(None),
+    images: list[UploadFile] = File(default=[]),
+    db: Session = Depends(get_db),
 ) -> Task:
+    task_id = str(uuid4())
+
+    # Save uploaded images
+    image_paths: list[str] = []
+    for i, img in enumerate(images):
+        if img.filename:
+            ext = img.filename.rsplit('.', 1)[-1].lower() if '.' in img.filename else 'png'
+            upload_dir = f"/app/data/uploads/{task_id}"
+            os.makedirs(upload_dir, exist_ok=True)
+            rel_path = f"uploads/{task_id}/image_{i}.{ext}"
+            with open(f"/app/data/{rel_path}", "wb") as f:
+                f.write(await img.read())
+            image_paths.append(rel_path)
+
     task = Task(
-        id=str(uuid4()),
-        description=payload.description,
-        repo_url=payload.repo_url,
-        base_branch=payload.base_branch,
-        llm_backend=payload.llm_backend,
-        llm_model=payload.llm_model,
+        id=task_id,
+        description=description,
+        repo_url=repo_url,
+        base_branch=base_branch,
+        llm_backend=llm_backend,
+        llm_model=llm_model,
+        task_type=task_type,
+        output_format=output_format,
+        images=json.dumps(image_paths),
         status=TaskStatus.QUEUED,
         log="",
     )
@@ -72,3 +99,14 @@ def delete_task(task_id: str, db: Annotated[Session, Depends(get_db)]) -> None:
         )
     db.delete(task)
     db.commit()
+
+
+@router.get("/{task_id}/download")
+async def download_task_output(task_id: str, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task or not task.output_file:
+        raise HTTPException(status_code=404, detail="No output file for this task")
+    if not os.path.exists(task.output_file):
+        raise HTTPException(status_code=404, detail="Output file not found on disk")
+    filename = os.path.basename(task.output_file)
+    return FileResponse(task.output_file, filename=filename)
