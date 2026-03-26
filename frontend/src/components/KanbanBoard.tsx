@@ -178,12 +178,12 @@ export default function KanbanBoard({ tasks, projects, onSelect, onDelete, onTas
     tasksByColumn[key].push(task)
   }
 
-  const colCount = columns.length + 1 // +1 for add-project column
+  const colCount = columns.length // project data columns (management column is fixed-width)
 
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: `repeat(${colCount}, 1fr)`,
+      gridTemplateColumns: `repeat(${colCount}, 1fr) 160px`,
       height: '100%',
       minHeight: 0,
       overflow: 'hidden',

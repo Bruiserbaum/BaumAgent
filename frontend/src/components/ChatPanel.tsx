@@ -192,18 +192,21 @@ export default function ChatPanel() {
           </div>
         ))}
         {loading && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '10px', gap: '8px' }}>
             <div
               style={{
-                padding: '8px 14px',
+                padding: '10px 16px',
                 borderRadius: '12px 12px 12px 2px',
                 backgroundColor: '#1e293b',
-                border: '1px solid #334155',
-                color: '#475569',
-                fontSize: '13px',
+                border: '1px solid #1e4d8c',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
               }}
             >
-              <span style={{ animation: 'pulse 1.2s infinite' }}>Thinking…</span>
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#7dd3fc', display: 'inline-block', animation: 'dotBounce 1.2s infinite ease-in-out', animationDelay: '0s' }} />
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#7dd3fc', display: 'inline-block', animation: 'dotBounce 1.2s infinite ease-in-out', animationDelay: '0.2s' }} />
+              <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#7dd3fc', display: 'inline-block', animation: 'dotBounce 1.2s infinite ease-in-out', animationDelay: '0.4s' }} />
             </div>
           </div>
         )}
@@ -303,7 +306,14 @@ export default function ChatPanel() {
           </div>
         </div>
       </div>
-      <style>{`@keyframes micPulse { 0%,100%{opacity:1} 50%{opacity:0.4} } @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }`}</style>
+      <style>{`
+        @keyframes micPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+        @keyframes dotBounce {
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+          40% { transform: translateY(-6px); opacity: 1; }
+        }
+      `}</style>
     </div>
   )
 }
