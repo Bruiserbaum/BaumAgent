@@ -425,28 +425,44 @@ class AgentService:
             output_format = getattr(task, "output_format", None) or "pdf"
             output_dir = f"/app/data/outputs/{task.id}"
             self._log(f"Generating {output_format.upper()} document ...")
-            output_file = generate_document(
-                title=self._research_result["title"],
-                sections=self._research_result["sections"],
-                sources=self._research_result["sources"],
-                output_format=output_format,
-                output_dir=output_dir,
-                fmt=get_doc_format(),
-            )
-            task.output_file = output_file
-            self._log(f"Document saved: {output_file}")
+            try:
+                # Try to load user's doc format settings
+                try:
+                    from models.user import User as UserModel
+                    from routers.settings import _get_user_settings, get_doc_format as _get_doc_fmt
+                    _user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
+                    _user_cfg = _get_user_settings(_user) if _user else None
+                    _fmt = _get_doc_fmt(_user_cfg)
+                except Exception:
+                    _fmt = get_doc_format()
+                output_file = generate_document(
+                    title=self._research_result["title"],
+                    sections=self._research_result["sections"],
+                    sources=self._research_result["sources"],
+                    output_format=output_format,
+                    output_dir=output_dir,
+                    fmt=_fmt,
+                )
+                task.output_file = output_file
+                db.commit()
+                self._log(f"Document saved: {output_file}")
+            except Exception as _doc_err:
+                self._log(f"[ERROR] Document generation failed: {_doc_err}")
+        else:
+            self._log("WARNING: LLM did not call finish() — no research result to generate document from.")
 
-            # Upload to SMB share if configured by user
+        # Upload to SMB share if configured by user
+        if task.output_file:
             try:
                 from models.user import User as UserModel
                 from routers.settings import _get_user_settings
-                user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
-                if user:
-                    user_cfg = _get_user_settings(user)
-                    smb_cfg = user_cfg.get("smb", {})
+                _smb_user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
+                if _smb_user:
+                    _smb_user_cfg = _get_user_settings(_smb_user)
+                    smb_cfg = _smb_user_cfg.get("smb", {})
                     if smb_cfg.get("enabled"):
                         from services.smb_service import upload_to_smb
-                        unc = upload_to_smb(output_file, smb_cfg)
+                        unc = upload_to_smb(task.output_file, smb_cfg)
                         self._log(f"[smb] Uploaded to {unc}")
             except Exception as _smb_err:
                 self._log(f"[smb] Upload failed (non-fatal): {_smb_err}")

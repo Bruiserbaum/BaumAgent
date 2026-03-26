@@ -32,6 +32,12 @@ const DEFAULT_SMB: SMBSettings = {
 const DEFAULT_SETTINGS: PortalSettings = {
   default_llm_backend: 'anthropic',
   default_llm_model: 'claude-sonnet-4-6',
+  chat_backend: '',
+  chat_model: '',
+  research_backend: '',
+  research_model: '',
+  code_backend: '',
+  code_model: '',
   doc_format: DEFAULT_DOC_FORMAT,
   smb: DEFAULT_SMB,
 }
@@ -228,7 +234,7 @@ export default function SettingsPanel({ onClose }: Props) {
       .catch(() => setLoading(false))
   }, [])
 
-  const setTop = (key: keyof Omit<PortalSettings, 'doc_format'>, value: string) => {
+  const setTop = (key: keyof Omit<PortalSettings, 'doc_format' | 'smb'>, value: string) => {
     setSettings(s => ({ ...s, [key]: value }))
   }
 
@@ -301,6 +307,41 @@ export default function SettingsPanel({ onClose }: Props) {
                 placeholder="e.g. claude-sonnet-4-6"
               />
             </div>
+          </div>
+
+          {/* Per-context model defaults */}
+          <div style={styles.sectionBlock}>
+            <p style={styles.sectionTitle}>Per-Context Defaults</p>
+            <p style={{ color: '#475569', fontSize: '12px', marginBottom: '14px', marginTop: '-8px' }}>
+              Override the default LLM per context. Leave blank to use the global default above.
+            </p>
+
+            {(['chat', 'research', 'code'] as const).map(ctx => (
+              <div key={ctx} style={{ marginBottom: '16px' }}>
+                <div style={{ color: '#64748b', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                  {ctx === 'chat' ? 'AI Chat' : ctx === 'research' ? 'Research Tasks' : 'Code Tasks'}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select
+                    style={{ ...styles.select, flex: '0 0 130px' }}
+                    value={(settings as any)[`${ctx}_backend`]}
+                    onChange={e => setTop(`${ctx}_backend` as any, e.target.value)}
+                  >
+                    <option value="">— global default —</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="ollama">Ollama</option>
+                  </select>
+                  <input
+                    style={styles.input}
+                    type="text"
+                    placeholder="model (blank = global default)"
+                    value={(settings as any)[`${ctx}_model`]}
+                    onChange={e => setTop(`${ctx}_model` as any, e.target.value)}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Document Formatting */}

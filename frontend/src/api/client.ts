@@ -86,6 +86,12 @@ export interface SMBSettings {
 export interface PortalSettings {
   default_llm_backend: string
   default_llm_model: string
+  chat_backend: string
+  chat_model: string
+  research_backend: string
+  research_model: string
+  code_backend: string
+  code_model: string
   doc_format: DocFormatSettings
   smb: SMBSettings
 }

@@ -6,6 +6,11 @@ interface Message {
   content: string
 }
 
+interface Props {
+  messages: Message[]
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>
+}
+
 declare global {
   interface Window {
     SpeechRecognition: new () => any
@@ -13,8 +18,7 @@ declare global {
   }
 }
 
-export default function ChatPanel() {
-  const [messages, setMessages] = useState<Message[]>([])
+export default function ChatPanel({ messages, setMessages }: Props) {
   const [input, setInput] = useState('')
   const [backend, setBackend] = useState('anthropic')
   const [model, setModel] = useState('claude-opus-4-6')
@@ -29,11 +33,18 @@ export default function ChatPanel() {
     api.getModels().then(setModels).catch(() => {})
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     setSpeechSupported(!!SR)
+    // Load chat-specific defaults from settings
+    api.getSettings().then(s => {
+      const b = s.chat_backend || s.default_llm_backend || 'anthropic'
+      const m = s.chat_model || s.default_llm_model || 'claude-opus-4-6'
+      setBackend(b)
+      setModel(m)
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
     const list = models[backend as keyof ModelsResponse] ?? []
-    if (list.length > 0) setModel(list[0])
+    if (list.length > 0 && !list.includes(model)) setModel(list[0])
   }, [backend, models])
 
   useEffect(() => {

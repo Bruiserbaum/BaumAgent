@@ -156,12 +156,25 @@ async def download_task_output(
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
-    if not task.output_file:
-        raise HTTPException(status_code=404, detail="No output file for this task")
-    if not os.path.exists(task.output_file):
-        raise HTTPException(status_code=404, detail="Output file not found on disk")
-    filename = os.path.basename(task.output_file)
-    return FileResponse(task.output_file, filename=filename)
+
+    # Try stored path first
+    if task.output_file and os.path.exists(task.output_file):
+        return FileResponse(task.output_file, filename=os.path.basename(task.output_file))
+
+    # Filesystem fallback: scan the output directory for any generated file
+    output_dir = f"/app/data/outputs/{task_id}"
+    if os.path.isdir(output_dir):
+        files = sorted(
+            f for f in os.listdir(output_dir)
+            if os.path.isfile(os.path.join(output_dir, f))
+        )
+        if files:
+            found_path = os.path.join(output_dir, files[0])
+            task.output_file = found_path
+            db.commit()
+            return FileResponse(found_path, filename=files[0])
+
+    raise HTTPException(status_code=404, detail="No output file for this task")
 
 
 @router.put("/{task_id}/project", response_model=TaskRead)

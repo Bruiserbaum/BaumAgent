@@ -91,6 +91,12 @@ class SMBSettings(BaseModel):
 class PortalSettings(BaseModel):
     default_llm_backend: str
     default_llm_model: str
+    chat_backend: str = ""
+    chat_model: str = ""
+    research_backend: str = ""
+    research_model: str = ""
+    code_backend: str = ""
+    code_model: str = ""
     doc_format: DocFormatSettings = DocFormatSettings()
     smb: SMBSettings = SMBSettings()
 

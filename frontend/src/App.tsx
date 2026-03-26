@@ -90,6 +90,11 @@ const styles = {
   } as React.CSSProperties,
 }
 
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
@@ -97,6 +102,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
 
   const loadTasks = useCallback(async () => {
     try { setTasks(await api.getTasks()) } catch { /* ignore */ }
@@ -125,9 +131,8 @@ export default function App() {
   const selectedTask = tasks.find(t => t.id === selectedTaskId) ?? null
 
   return (
-    <>
-      <DataCenterBackground />
-      <div style={styles.app}>
+    <div style={styles.app}>
+        <DataCenterBackground />
         {/* Header */}
         <header style={styles.header}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
@@ -165,7 +170,7 @@ export default function App() {
           </div>
 
           {/* Chat panel */}
-          <ChatPanel />
+          <ChatPanel messages={chatMessages} setMessages={setChatMessages} />
         </div>
 
         {/* Modals */}
@@ -189,6 +194,5 @@ export default function App() {
           </div>
         )}
       </div>
-    </>
   )
 }
