@@ -6,23 +6,31 @@ import TaskList from './components/TaskList'
 import TaskDetail from './components/TaskDetail'
 import TaskSubmitForm from './components/TaskSubmitForm'
 import SettingsPanel from './components/SettingsPanel'
+import DataCenterBackground from './components/DataCenterBackground'
 
 const styles = {
   app: {
     minHeight: '100vh',
-    backgroundColor: '#1a1a2e',
+    backgroundColor: 'transparent',
     color: '#e2e8f0',
     fontFamily: "'Segoe UI', system-ui, sans-serif",
     margin: 0,
     padding: 0,
+    position: 'relative' as const,
+    zIndex: 1,
   } as React.CSSProperties,
   header: {
-    backgroundColor: '#16213e',
-    borderBottom: '1px solid #0f3460',
+    backgroundColor: 'rgba(8,12,28,0.75)',
+    backdropFilter: 'blur(12px)',
+    WebkitBackdropFilter: 'blur(12px)',
+    borderBottom: '1px solid rgba(30,70,140,0.5)',
     padding: '16px 24px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    position: 'sticky' as const,
+    top: 0,
+    zIndex: 10,
   } as React.CSSProperties,
   title: {
     margin: 0,
@@ -62,6 +70,8 @@ const styles = {
     maxWidth: '1100px',
     margin: '0 auto',
     padding: '24px 16px',
+    position: 'relative' as const,
+    zIndex: 1,
   } as React.CSSProperties,
   backBtn: {
     backgroundColor: 'transparent',
@@ -113,6 +123,8 @@ export default function App() {
   const selectedTask = tasks.find(t => t.id === selectedTaskId) ?? null
 
   return (
+    <>
+    <DataCenterBackground />
     <div style={styles.app}>
       <header style={styles.header}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
@@ -168,5 +180,6 @@ export default function App() {
         </div>
       )}
     </div>
+    </>
   )
 }
