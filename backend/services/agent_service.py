@@ -436,6 +436,21 @@ class AgentService:
             task.output_file = output_file
             self._log(f"Document saved: {output_file}")
 
+            # Upload to SMB share if configured by user
+            try:
+                from models.user import User as UserModel
+                from routers.settings import _get_user_settings
+                user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
+                if user:
+                    user_cfg = _get_user_settings(user)
+                    smb_cfg = user_cfg.get("smb", {})
+                    if smb_cfg.get("enabled"):
+                        from services.smb_service import upload_to_smb
+                        unc = upload_to_smb(output_file, smb_cfg)
+                        self._log(f"[smb] Uploaded to {unc}")
+            except Exception as _smb_err:
+                self._log(f"[smb] Upload failed (non-fatal): {_smb_err}")
+
         task.status = TaskStatus.COMPLETE
         task.updated_at = datetime.now(timezone.utc)
         db.commit()

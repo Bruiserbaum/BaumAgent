@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api, PortalSettings, DocFormatSettings } from '../api/client'
+import { api, PortalSettings, DocFormatSettings, SMBSettings } from '../api/client'
 
 interface Props {
   onClose: () => void
@@ -19,10 +19,21 @@ const DEFAULT_DOC_FORMAT: DocFormatSettings = {
   summary_as_bullets: true,
 }
 
+const DEFAULT_SMB: SMBSettings = {
+  enabled: false,
+  host: '',
+  share: '',
+  username: '',
+  password: '',
+  domain: '',
+  remote_path: '',
+}
+
 const DEFAULT_SETTINGS: PortalSettings = {
   default_llm_backend: 'anthropic',
   default_llm_model: 'claude-sonnet-4-6',
   doc_format: DEFAULT_DOC_FORMAT,
+  smb: DEFAULT_SMB,
 }
 
 const styles = {
@@ -205,6 +216,8 @@ export default function SettingsPanel({ onClose }: Props) {
   const [settings, setSettings] = useState<PortalSettings>(DEFAULT_SETTINGS)
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
+  const [smbTestResult, setSmbTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [smbTesting, setSmbTesting] = useState(false)
 
   useEffect(() => {
     api.getSettings()
@@ -221,6 +234,20 @@ export default function SettingsPanel({ onClose }: Props) {
 
   const setFmt = <K extends keyof DocFormatSettings>(key: K, value: DocFormatSettings[K]) => {
     setSettings(s => ({ ...s, doc_format: { ...s.doc_format, [key]: value } }))
+  }
+
+  const setSmb = <K extends keyof SMBSettings>(key: K, value: SMBSettings[K]) => {
+    setSettings(s => ({ ...s, smb: { ...(s.smb ?? DEFAULT_SMB), [key]: value } }))
+  }
+
+  const handleTestSMB = async () => {
+    setSmbTesting(true)
+    setSmbTestResult(null)
+    // Save first so the backend tests the current values
+    await api.updateSettings(settings)
+    const result = await api.testSMB()
+    setSmbTestResult(result)
+    setSmbTesting(false)
   }
 
   const handleSave = async () => {
@@ -435,6 +462,78 @@ export default function SettingsPanel({ onClose }: Props) {
                 Include Images <span style={{ fontSize: '11px', color: '#334155' }}>(coming soon)</span>
               </label>
             </div>
+          </div>
+
+          {/* SMB Settings */}
+          <div style={styles.sectionBlock}>
+            <p style={styles.sectionTitle}>SMB / Network Share</p>
+
+            <div style={styles.checkboxRow}>
+              <input
+                style={styles.checkbox}
+                type="checkbox"
+                id="smb_enabled"
+                checked={settings.smb?.enabled ?? false}
+                onChange={e => setSmb('enabled', e.target.checked)}
+              />
+              <label style={styles.checkboxLabel} htmlFor="smb_enabled">
+                Auto-save research reports to SMB share
+              </label>
+            </div>
+
+            {settings.smb?.enabled && (
+              <>
+                <div style={styles.fieldRow}>
+                  <span style={styles.label}>Host / IP</span>
+                  <input style={styles.input} type="text" placeholder="192.168.1.10"
+                    value={settings.smb.host} onChange={e => setSmb('host', e.target.value)} />
+                </div>
+                <div style={styles.fieldRow}>
+                  <span style={styles.label}>Share Name</span>
+                  <input style={styles.input} type="text" placeholder="Reports"
+                    value={settings.smb.share} onChange={e => setSmb('share', e.target.value)} />
+                </div>
+                <div style={styles.fieldRow}>
+                  <span style={styles.label}>Username</span>
+                  <input style={styles.input} type="text" placeholder="Optional"
+                    value={settings.smb.username} onChange={e => setSmb('username', e.target.value)} />
+                </div>
+                <div style={styles.fieldRow}>
+                  <span style={styles.label}>Password</span>
+                  <input style={styles.input} type="password" placeholder="Optional"
+                    value={settings.smb.password} onChange={e => setSmb('password', e.target.value)} />
+                </div>
+                <div style={styles.fieldRow}>
+                  <span style={styles.label}>Domain</span>
+                  <input style={styles.input} type="text" placeholder="Optional (Windows domain)"
+                    value={settings.smb.domain} onChange={e => setSmb('domain', e.target.value)} />
+                </div>
+                <div style={styles.fieldRow}>
+                  <span style={styles.label}>Remote Path</span>
+                  <input style={styles.input} type="text" placeholder="BaumAgent/Reports (optional)"
+                    value={settings.smb.remote_path} onChange={e => setSmb('remote_path', e.target.value)} />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                  <button
+                    onClick={handleTestSMB}
+                    disabled={smbTesting}
+                    style={{
+                      backgroundColor: '#0f2030', color: '#94a3b8',
+                      border: '1px solid #334155', borderRadius: '6px',
+                      padding: '7px 16px', fontSize: '13px', cursor: 'pointer',
+                    }}
+                  >
+                    {smbTesting ? 'Testing…' : 'Test Connection'}
+                  </button>
+                  {smbTestResult && (
+                    <span style={{ fontSize: '13px', color: smbTestResult.ok ? '#4ade80' : '#f87171' }}>
+                      {smbTestResult.message}
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
           </div>
 
           <div style={styles.footer}>

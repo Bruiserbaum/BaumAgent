@@ -78,10 +78,21 @@ def get_doc_format(user_settings: dict | None = None) -> dict:
     return {**DocFormatSettings().model_dump(), **user_settings.get("doc_format", {})}
 
 
+class SMBSettings(BaseModel):
+    enabled: bool = False
+    host: str = ""
+    share: str = ""
+    username: str = ""
+    password: str = ""
+    domain: str = ""
+    remote_path: str = ""
+
+
 class PortalSettings(BaseModel):
     default_llm_backend: str
     default_llm_model: str
     doc_format: DocFormatSettings = DocFormatSettings()
+    smb: SMBSettings = SMBSettings()
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +146,21 @@ def read_settings(
     merged_fmt = {**defaults.model_dump(), **stored_fmt}
     data["doc_format"] = merged_fmt
     return PortalSettings(**data)
+
+
+@router.post("/api/settings/smb/test")
+def test_smb(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    data = _get_user_settings(current_user)
+    smb_cfg = data.get("smb", {})
+    try:
+        from services.smb_service import test_smb_connection
+        msg = test_smb_connection(smb_cfg)
+        return {"ok": True, "message": msg}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
 
 
 @router.put("/api/settings", response_model=PortalSettings)

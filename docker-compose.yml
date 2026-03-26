@@ -1,3 +1,22 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# BaumAgent — docker-compose
+#
+# Network configuration
+# ─────────────────────────────────────────────────────────────────────────────
+# By default all services run on the internal `baumagent` bridge network.
+#
+# To connect BaumAgent to the BaumDocker ai-stack (so it can reach Ollama,
+# OpenWebUI, etc. by container name) set these env vars in Portainer:
+#
+#   CONNECT_AI_FRONTEND=true   → joins the ai_frontend network
+#   CONNECT_AI_BACKEND=true    → joins the ai_backend network
+#
+# If both are false/unset the external network sections are simply ignored.
+# The network names match the BaumDocker ai-stack defaults (ai_frontend /
+# ai_backend). Override with AISTACK_FRONTEND_NET / AISTACK_BACKEND_NET if
+# your stack was renamed.
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
   api:
     build:
@@ -9,8 +28,10 @@ services:
       - redis
     networks:
       - baumagent
+      - ai_frontend_net
+      - ai_backend_net
     ports:
-      - "8100:8000"
+      - "${BAUMAGENT_PORT:-8100}:8000"
     volumes:
       - ./data/db:/app/data
       - ./data/repos:/app/repos
@@ -19,7 +40,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_USER_NAME: ${GITHUB_USER_NAME:-BaumAgent}
       GITHUB_USER_EMAIL: ${GITHUB_USER_EMAIL:-baumagent@localhost}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
@@ -35,6 +56,7 @@ services:
       - api
     networks:
       - baumagent
+      - ai_backend_net
     command: python -m worker.worker_entrypoint
     volumes:
       - ./data/db:/app/data
@@ -44,7 +66,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      GITHUB_TOKEN: ${GITHUB_TOKEN}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITHUB_USER_NAME: ${GITHUB_USER_NAME:-BaumAgent}
       GITHUB_USER_EMAIL: ${GITHUB_USER_EMAIL:-baumagent@localhost}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
@@ -62,3 +84,14 @@ services:
 networks:
   baumagent:
     name: baumagent
+
+  # BaumDocker ai-stack networks — set external: true once you have the
+  # ai-stack deployed. The name must match what docker created (check with
+  # `docker network ls`). Defaults match the BaumDocker defaults.
+  ai_frontend_net:
+    external: true
+    name: ${AISTACK_FRONTEND_NET:-ai_frontend}
+
+  ai_backend_net:
+    external: true
+    name: ${AISTACK_BACKEND_NET:-ai_backend}

@@ -206,7 +206,7 @@ export default function TaskDetail({ task }: Props) {
           </div>
         )}
 
-        {task.output_file && (
+        {(task.task_type === 'research' && task.status === 'complete') && (
           <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: '#0d2818', border: '1px solid #166534', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
             <span style={{ color: '#4ade80', fontWeight: 600 }}>Research report ready</span>
             <button style={downloadBtn} onClick={() => api.downloadTask(task.id)}>

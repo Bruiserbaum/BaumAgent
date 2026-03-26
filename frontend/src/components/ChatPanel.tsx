@@ -107,7 +107,7 @@ export default function ChatPanel() {
   return (
     <div
       style={{
-        width: '360px',
+        width: 'clamp(320px, 25vw, 520px)',
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',

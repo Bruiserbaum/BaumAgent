@@ -73,10 +73,21 @@ export interface DocFormatSettings {
   summary_as_bullets: boolean
 }
 
+export interface SMBSettings {
+  enabled: boolean
+  host: string
+  share: string
+  username: string
+  password: string
+  domain: string
+  remote_path: string
+}
+
 export interface PortalSettings {
   default_llm_backend: string
   default_llm_model: string
   doc_format: DocFormatSettings
+  smb: SMBSettings
 }
 
 export const api = {
@@ -141,6 +152,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId }),
     }).then(r => r.json()),
+
+  testSMB: (): Promise<{ ok: boolean; message: string }> =>
+    fetch(`${BASE}/settings/smb/test`, { method: 'POST' }).then(r => r.json()),
 
   chat: (
     messages: { role: string; content: string }[],
