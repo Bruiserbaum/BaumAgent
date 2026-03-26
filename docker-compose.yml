@@ -90,8 +90,8 @@ networks:
   # `docker network ls`). Defaults match the BaumDocker defaults.
   ai_frontend_net:
     external: true
-    name: ${AISTACK_FRONTEND_NET:-ai_frontend}
+    name: ${AISTACK_FRONTEND_NET:-aistackgithub_ai_frontend}
 
   ai_backend_net:
     external: true
-    name: ${AISTACK_BACKEND_NET:-ai_backend}
+    name: ${AISTACK_BACKEND_NET:-aistackgithub_ai_backend}
