@@ -177,7 +177,7 @@ export default function TaskDetail({ task }: Props) {
           </div>
         )}
 
-        {task.status === 'failed' && (
+        {(task.status === 'failed' || task.status === 'complete') && (
           <div style={{ marginTop: '12px' }}>
             <button
               onClick={async () => { await api.retryTask(task.id) }}
@@ -192,7 +192,7 @@ export default function TaskDetail({ task }: Props) {
                 fontSize: '14px',
               }}
             >
-              ↻ Retry Task
+              {task.status === 'complete' ? '↻ Re-run Task' : '↻ Retry Task'}
             </button>
           </div>
         )}

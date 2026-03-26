@@ -113,11 +113,12 @@ def retry_task(
     task = db.query(Task).filter(Task.id == task_id, Task.user_id == current_user.id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status != TaskStatus.FAILED:
-        raise HTTPException(status_code=409, detail="Only failed tasks can be retried")
+    if task.status not in (TaskStatus.FAILED, TaskStatus.COMPLETE):
+        raise HTTPException(status_code=409, detail="Only failed or completed tasks can be re-run")
     task.status = TaskStatus.QUEUED
     task.error_message = None
     task.rq_job_id = None
+    task.output_file = None
     db.commit()
     db.refresh(task)
     queue = _get_redis_queue()
