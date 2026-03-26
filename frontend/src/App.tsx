@@ -2,17 +2,19 @@ import { useState, useEffect, useCallback } from 'react'
 
 declare const __APP_VERSION__: string
 import { api, Task, User, Project } from './api/client'
-import TaskList from './components/TaskList'
+import KanbanBoard from './components/KanbanBoard'
 import TaskDetail from './components/TaskDetail'
 import TaskSubmitForm from './components/TaskSubmitForm'
 import SettingsPanel from './components/SettingsPanel'
 import DataCenterBackground from './components/DataCenterBackground'
-import Sidebar from './components/Sidebar'
+import ChatPanel from './components/ChatPanel'
 import UserAvatar from './components/UserAvatar'
 
 const styles = {
   app: {
-    minHeight: '100vh',
+    height: '100vh',
+    display: 'flex',
+    flexDirection: 'column' as const,
     backgroundColor: 'transparent',
     color: '#e2e8f0',
     fontFamily: "'Segoe UI', system-ui, sans-serif",
@@ -20,23 +22,23 @@ const styles = {
     padding: 0,
     position: 'relative' as const,
     zIndex: 1,
+    overflow: 'hidden',
   } as React.CSSProperties,
   header: {
-    backgroundColor: 'rgba(8,12,28,0.75)',
+    backgroundColor: 'rgba(8,12,28,0.80)',
     backdropFilter: 'blur(12px)',
     WebkitBackdropFilter: 'blur(12px)',
-    borderBottom: '1px solid rgba(30,70,140,0.5)',
-    padding: '16px 24px',
+    borderBottom: '1px solid rgba(20,50,110,0.7)',
+    padding: '12px 20px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    position: 'sticky' as const,
-    top: 0,
+    flexShrink: 0,
     zIndex: 10,
   } as React.CSSProperties,
   title: {
     margin: 0,
-    fontSize: '22px',
+    fontSize: '20px',
     fontWeight: 700,
     color: '#7dd3fc',
     letterSpacing: '-0.5px',
@@ -51,22 +53,20 @@ const styles = {
     color: '#7dd3fc',
     border: '1px solid #1e4d8c',
     borderRadius: '6px',
-    padding: '8px 18px',
+    padding: '7px 16px',
     cursor: 'pointer',
-    fontSize: '14px',
+    fontSize: '13px',
     fontWeight: 600,
-    transition: 'background 0.15s',
   } as React.CSSProperties,
   settingsBtn: {
     backgroundColor: '#0f2030',
     color: '#94a3b8',
     border: '1px solid #1e4d8c',
     borderRadius: '6px',
-    padding: '8px 18px',
+    padding: '7px 16px',
     cursor: 'pointer',
-    fontSize: '14px',
+    fontSize: '13px',
     fontWeight: 600,
-    transition: 'background 0.15s',
   } as React.CSSProperties,
   backBtn: {
     backgroundColor: 'transparent',
@@ -76,7 +76,8 @@ const styles = {
     padding: '6px 14px',
     cursor: 'pointer',
     fontSize: '13px',
-    marginBottom: '18px',
+    marginBottom: '14px',
+    display: 'inline-block',
   } as React.CSSProperties,
   overlay: {
     position: 'fixed' as const,
@@ -96,24 +97,13 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null) // null = all tasks
 
   const loadTasks = useCallback(async () => {
-    try {
-      const data = await api.getTasks()
-      setTasks(data)
-    } catch {
-      // silently ignore on poll
-    }
+    try { setTasks(await api.getTasks()) } catch { /* ignore */ }
   }, [])
 
   const loadProjects = useCallback(async () => {
-    try {
-      const data = await api.getProjects()
-      setProjects(data)
-    } catch {
-      // silently ignore
-    }
+    try { setProjects(await api.getProjects()) } catch { /* ignore */ }
   }, [])
 
   useEffect(() => {
@@ -127,107 +117,77 @@ export default function App() {
     loadProjects()
   }, [loadProjects])
 
-  // Refresh projects when tasks change (to keep counts accurate)
-  useEffect(() => {
-    loadProjects()
-  }, [tasks, loadProjects])
-
   const handleDelete = async (id: string) => {
     await api.deleteTask(id)
     await loadTasks()
   }
 
-  // Compute task counts per project
-  const taskCounts: Record<string, number> = { all: tasks.length, unassigned: 0 }
-  for (const task of tasks) {
-    if (!task.project_id) {
-      taskCounts['unassigned'] = (taskCounts['unassigned'] ?? 0) + 1
-    } else {
-      taskCounts[task.project_id] = (taskCounts[task.project_id] ?? 0) + 1
-    }
-  }
-
-  // Filter tasks based on selected project
-  const filteredTasks = selectedProjectId === null
-    ? tasks
-    : selectedProjectId === 'unassigned'
-      ? tasks.filter(t => !t.project_id)
-      : tasks.filter(t => t.project_id === selectedProjectId)
-
   const selectedTask = tasks.find(t => t.id === selectedTaskId) ?? null
 
   return (
     <>
-    <DataCenterBackground />
-    <div style={styles.app}>
-      <header style={styles.header}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-          <h1 style={styles.title}>BaumAgent</h1>
-          <span style={{ color: '#475569', fontSize: '12px', fontWeight: 400 }}>v{__APP_VERSION__}</span>
-        </div>
-        <div style={styles.headerActions}>
-          <button style={styles.settingsBtn} onClick={() => setShowSettings(true)}>
-            ⚙ Settings
-          </button>
-          <button style={styles.newTaskBtn} onClick={() => setShowForm(true)}>
-            + New Task
-          </button>
-          <UserAvatar user={currentUser} />
-        </div>
-      </header>
+      <DataCenterBackground />
+      <div style={styles.app}>
+        {/* Header */}
+        <header style={styles.header}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+            <h1 style={styles.title}>BaumAgent</h1>
+            <span style={{ color: '#475569', fontSize: '11px' }}>v{__APP_VERSION__}</span>
+          </div>
+          <div style={styles.headerActions}>
+            <button style={styles.settingsBtn} onClick={() => setShowSettings(true)}>⚙ Settings</button>
+            <button style={styles.newTaskBtn} onClick={() => setShowForm(true)}>+ New Task</button>
+            <UserAvatar user={currentUser} />
+          </div>
+        </header>
 
-      <Sidebar
-        projects={projects}
-        selectedProjectId={selectedProjectId}
-        onSelectProject={id => {
-          setSelectedProjectId(id)
-          setSelectedTaskId(null)
-        }}
-        onProjectsChange={loadProjects}
-        taskCounts={taskCounts}
-      />
+        {/* Body: kanban (or detail) + chat */}
+        <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+          {/* Main content */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+            {selectedTask ? (
+              <div style={{ padding: '20px 20px', overflowY: 'auto', flex: 1 }}>
+                <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>
+                  &larr; Back to Tasks
+                </button>
+                <TaskDetail task={selectedTask} />
+              </div>
+            ) : (
+              <KanbanBoard
+                tasks={tasks}
+                projects={projects}
+                onSelect={setSelectedTaskId}
+                onDelete={handleDelete}
+                onTasksChange={loadTasks}
+              />
+            )}
+          </div>
 
-      <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px 16px' }}>
-        {selectedTask ? (
-          <>
-            <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>
-              &larr; Back to Tasks
-            </button>
-            <TaskDetail task={selectedTask} />
-          </>
-        ) : (
-          <TaskList
-            tasks={filteredTasks}
-            onSelect={setSelectedTaskId}
-            onDelete={handleDelete}
-            projects={projects}
-          />
+          {/* Chat panel */}
+          <ChatPanel />
+        </div>
+
+        {/* Modals */}
+        {showForm && (
+          <div style={styles.overlay} onClick={() => setShowForm(false)}>
+            <div onClick={e => e.stopPropagation()}>
+              <TaskSubmitForm
+                onClose={() => setShowForm(false)}
+                onCreated={async () => { setShowForm(false); await loadTasks() }}
+                projects={projects}
+              />
+            </div>
+          </div>
         )}
-      </main>
 
-      {showForm && (
-        <div style={styles.overlay} onClick={() => setShowForm(false)}>
-          <div onClick={e => e.stopPropagation()}>
-            <TaskSubmitForm
-              onClose={() => setShowForm(false)}
-              onCreated={async () => {
-                setShowForm(false)
-                await loadTasks()
-              }}
-              projects={projects}
-            />
+        {showSettings && (
+          <div style={styles.overlay} onClick={() => setShowSettings(false)}>
+            <div onClick={e => e.stopPropagation()}>
+              <SettingsPanel onClose={() => setShowSettings(false)} />
+            </div>
           </div>
-        </div>
-      )}
-
-      {showSettings && (
-        <div style={styles.overlay} onClick={() => setShowSettings(false)}>
-          <div onClick={e => e.stopPropagation()}>
-            <SettingsPanel onClose={() => setShowSettings(false)} />
-          </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
     </>
   )
 }

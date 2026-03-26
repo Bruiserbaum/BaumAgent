@@ -1,4 +1,5 @@
 from typing import Any, Union
+import asyncio
 import json
 import openai
 
@@ -55,11 +56,20 @@ class OpenAIClient:
         final_text = ""
 
         while True:
-            response = await self._client.chat.completions.create(
-                model=self._model,
-                messages=messages,
-                tools=openai_tools,
-            )
+            for _attempt in range(6):
+                try:
+                    response = await self._client.chat.completions.create(
+                        model=self._model,
+                        messages=messages,
+                        tools=openai_tools,
+                    )
+                    break
+                except openai.RateLimitError:
+                    if _attempt == 5:
+                        raise
+                    wait = min(60, 5 * (2 ** _attempt))
+                    log_fn(f"[rate_limit] TPM limit hit — waiting {wait}s before retry {_attempt + 1}/5…")
+                    await asyncio.sleep(wait)
 
             choice = response.choices[0]
             message = choice.message

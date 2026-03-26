@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 
 from database import init_db
 from models import user as user_model, project as project_model  # noqa: F401 — ensures tables are created
-from routers import tasks, logs, settings as settings_router, users, projects
+from routers import tasks, logs, settings as settings_router, users, projects, chat
 
 
 STATIC_DIR = "/app/static"
@@ -37,6 +37,7 @@ app.include_router(logs.router)
 app.include_router(settings_router.router)
 app.include_router(users.router)
 app.include_router(projects.router)
+app.include_router(chat.router)
 
 # Serve frontend static assets if the build exists
 _assets_dir = os.path.join(STATIC_DIR, "assets")

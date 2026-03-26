@@ -138,4 +138,18 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId }),
     }).then(r => r.json()),
+
+  chat: (
+    messages: { role: string; content: string }[],
+    backend: string,
+    model: string,
+  ): Promise<{ message: string }> =>
+    fetch(`${BASE}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, backend, model }),
+    }).then(async r => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    }),
 }
