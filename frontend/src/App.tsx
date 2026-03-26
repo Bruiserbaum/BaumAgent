@@ -147,7 +147,7 @@ export default function App() {
         </header>
 
         {/* Body: kanban (or detail) + chat */}
-        <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden', position: 'relative', zIndex: 1 }}>
           {/* Main content */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
             {selectedTask ? (
