@@ -104,6 +104,30 @@ def get_task(
     return task
 
 
+@router.post("/{task_id}/retry", response_model=TaskRead)
+def retry_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> Task:
+    task = db.query(Task).filter(Task.id == task_id, Task.user_id == current_user.id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status != TaskStatus.FAILED:
+        raise HTTPException(status_code=409, detail="Only failed tasks can be retried")
+    task.status = TaskStatus.QUEUED
+    task.error_message = None
+    task.rq_job_id = None
+    db.commit()
+    db.refresh(task)
+    queue = _get_redis_queue()
+    job = queue.enqueue(run_task, task.id, job_timeout=3600)
+    task.rq_job_id = job.id
+    db.commit()
+    db.refresh(task)
+    return task
+
+
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(
     task_id: str,

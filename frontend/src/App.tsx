@@ -159,6 +159,7 @@ export default function App() {
                 onSelect={setSelectedTaskId}
                 onDelete={handleDelete}
                 onTasksChange={loadTasks}
+                onProjectsChange={loadProjects}
               />
             )}
           </div>

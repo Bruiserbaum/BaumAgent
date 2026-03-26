@@ -133,15 +133,24 @@ export default function ChatPanel() {
           <option value="openai">OpenAI</option>
           <option value="ollama">Ollama</option>
         </select>
-        <select
-          style={{ ...selectStyle, marginBottom: 0 }}
-          value={model}
-          onChange={e => setModel(e.target.value)}
-          disabled={modelOptions.length === 0}
-        >
-          {modelOptions.length === 0 && <option value="">No models available</option>}
-          {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
+        {backend === 'ollama' && modelOptions.length === 0 ? (
+          <input
+            style={{ ...selectStyle, marginBottom: 0 }}
+            value={model}
+            onChange={e => setModel(e.target.value)}
+            placeholder="e.g. llama3.2, mistral, gemma3"
+          />
+        ) : (
+          <select
+            style={{ ...selectStyle, marginBottom: 0 }}
+            value={model}
+            onChange={e => setModel(e.target.value)}
+            disabled={modelOptions.length === 0}
+          >
+            {modelOptions.length === 0 && <option value="">No models available</option>}
+            {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+        )}
       </div>
 
       {/* Messages */}

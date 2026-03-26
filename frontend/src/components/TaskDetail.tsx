@@ -177,6 +177,26 @@ export default function TaskDetail({ task }: Props) {
           </div>
         )}
 
+        {task.status === 'failed' && (
+          <div style={{ marginTop: '12px' }}>
+            <button
+              onClick={async () => { await api.retryTask(task.id) }}
+              style={{
+                backgroundColor: '#1e3a5f',
+                color: '#60a5fa',
+                border: '1px solid #2563eb',
+                borderRadius: '6px',
+                padding: '7px 20px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '14px',
+              }}
+            >
+              ↻ Retry Task
+            </button>
+          </div>
+        )}
+
         {task.pr_url && (
           <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: '#0d2818', border: '1px solid #166534', borderRadius: '8px' }}>
             <span style={{ color: '#4ade80', fontWeight: 600, marginRight: '10px' }}>Pull Request Opened:</span>

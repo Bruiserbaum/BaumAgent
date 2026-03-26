@@ -92,6 +92,9 @@ export const api = {
   deleteTask: (id: string): Promise<void> =>
     fetch(`${BASE}/tasks/${id}`, { method: 'DELETE' }).then(() => {}),
 
+  retryTask: (id: string): Promise<Task> =>
+    fetch(`${BASE}/tasks/${id}/retry`, { method: 'POST' }).then(r => r.json()),
+
   getModels: (): Promise<ModelsResponse> =>
     fetch(`${BASE}/models`).then(r => r.json()),
 
