@@ -176,36 +176,34 @@ export default function App() {
         </div>
       </header>
 
-      <div style={{ display: 'flex', minHeight: 'calc(100vh - 57px)' }}>
-        <Sidebar
-          projects={projects}
-          selectedProjectId={selectedProjectId}
-          onSelectProject={id => {
-            setSelectedProjectId(id)
-            setSelectedTaskId(null)
-          }}
-          onProjectsChange={loadProjects}
-          taskCounts={taskCounts}
-        />
+      <Sidebar
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        onSelectProject={id => {
+          setSelectedProjectId(id)
+          setSelectedTaskId(null)
+        }}
+        onProjectsChange={loadProjects}
+        taskCounts={taskCounts}
+      />
 
-        <main style={{ flex: 1, padding: '24px 16px', maxWidth: '900px' }}>
-          {selectedTask ? (
-            <>
-              <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>
-                &larr; Back to Tasks
-              </button>
-              <TaskDetail task={selectedTask} />
-            </>
-          ) : (
-            <TaskList
-              tasks={filteredTasks}
-              onSelect={setSelectedTaskId}
-              onDelete={handleDelete}
-              projects={projects}
-            />
-          )}
-        </main>
-      </div>
+      <main style={{ maxWidth: '1100px', margin: '0 auto', padding: '24px 16px' }}>
+        {selectedTask ? (
+          <>
+            <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>
+              &larr; Back to Tasks
+            </button>
+            <TaskDetail task={selectedTask} />
+          </>
+        ) : (
+          <TaskList
+            tasks={filteredTasks}
+            onSelect={setSelectedTaskId}
+            onDelete={handleDelete}
+            projects={projects}
+          />
+        )}
+      </main>
 
       {showForm && (
         <div style={styles.overlay} onClick={() => setShowForm(false)}>
