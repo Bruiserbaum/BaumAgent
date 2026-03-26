@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, FormEvent, DragEvent, ClipboardEvent } from 'react'
-import { api, ModelsResponse } from '../api/client'
+import { api, ModelsResponse, Project } from '../api/client'
 
 interface Props {
   onClose: () => void
   onCreated: () => void
+  projects?: Project[]
 }
 
 const card: React.CSSProperties = {
@@ -92,7 +93,7 @@ declare global {
   }
 }
 
-export default function TaskSubmitForm({ onClose, onCreated }: Props) {
+export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) {
   const [taskType, setTaskType] = useState<'code' | 'research'>('code')
   const [description, setDescription] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
@@ -103,6 +104,7 @@ export default function TaskSubmitForm({ onClose, onCreated }: Props) {
   const [models, setModels] = useState<ModelsResponse>({ anthropic: [], openai: [], ollama: [] })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [projectId, setProjectId] = useState<string>('')
 
   // Image state
   const [images, setImages] = useState<File[]>([])
@@ -243,6 +245,7 @@ export default function TaskSubmitForm({ onClose, onCreated }: Props) {
       if (taskType === 'research') {
         formData.append('output_format', outputFormat)
       }
+      if (projectId) formData.append('project_id', projectId)
       images.forEach(img => formData.append('images', img))
 
       await api.createTask(formData)
@@ -459,6 +462,23 @@ export default function TaskSubmitForm({ onClose, onCreated }: Props) {
             <option key={m} value={m}>{m}</option>
           ))}
         </select>
+
+        {/* Project selector */}
+        {projects && projects.length > 0 && (
+          <>
+            <label style={label}>Project</label>
+            <select
+              style={selectStyle}
+              value={projectId}
+              onChange={e => setProjectId(e.target.value)}
+            >
+              <option value="">No project</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </>
+        )}
 
         <div style={btnRow}>
           <button type="button" style={btnSecondary} onClick={onClose}>Cancel</button>

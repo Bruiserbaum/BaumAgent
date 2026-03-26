@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Annotated
+from typing import Annotated, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile, File
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from config import get_settings
 from database import get_db
+from dependencies import get_current_user
 from models.task import Task, TaskCreate, TaskRead, TaskStatus
 from worker.job import run_task
 
@@ -32,8 +33,10 @@ async def create_task(
     llm_model: str = Form("claude-opus-4-6"),
     task_type: str = Form("code"),
     output_format: str | None = Form(None),
+    project_id: Optional[str] = Form(None),
     images: list[UploadFile] = File(default=[]),
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ) -> Task:
     task_id = str(uuid4())
 
@@ -61,6 +64,8 @@ async def create_task(
         images=json.dumps(image_paths),
         status=TaskStatus.QUEUED,
         log="",
+        user_id=current_user.id,
+        project_id=project_id if project_id else None,
     )
     db.add(task)
     db.commit()
@@ -75,22 +80,38 @@ async def create_task(
 
 
 @router.get("", response_model=list[TaskRead])
-def list_tasks(db: Annotated[Session, Depends(get_db)]) -> list[Task]:
-    return db.query(Task).order_by(Task.created_at.desc()).all()
+def list_tasks(
+    db: Annotated[Session, Depends(get_db)],
+    current_user=Depends(get_current_user),
+) -> list[Task]:
+    return (
+        db.query(Task)
+        .filter(Task.user_id == current_user.id)
+        .order_by(Task.created_at.desc())
+        .all()
+    )
 
 
 @router.get("/{task_id}", response_model=TaskRead)
-def get_task(task_id: str, db: Annotated[Session, Depends(get_db)]) -> Task:
+def get_task(
+    task_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    current_user=Depends(get_current_user),
+) -> Task:
     task = db.query(Task).filter(Task.id == task_id).first()
-    if task is None:
+    if task is None or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(task_id: str, db: Annotated[Session, Depends(get_db)]) -> None:
+def delete_task(
+    task_id: str,
+    db: Annotated[Session, Depends(get_db)],
+    current_user=Depends(get_current_user),
+) -> None:
     task = db.query(Task).filter(Task.id == task_id).first()
-    if task is None:
+    if task is None or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status not in (TaskStatus.QUEUED, TaskStatus.FAILED):
         raise HTTPException(
@@ -102,11 +123,40 @@ def delete_task(task_id: str, db: Annotated[Session, Depends(get_db)]) -> None:
 
 
 @router.get("/{task_id}/download")
-async def download_task_output(task_id: str, db: Session = Depends(get_db)):
+async def download_task_output(
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     task = db.query(Task).filter(Task.id == task_id).first()
-    if not task or not task.output_file:
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not task.output_file:
         raise HTTPException(status_code=404, detail="No output file for this task")
     if not os.path.exists(task.output_file):
         raise HTTPException(status_code=404, detail="Output file not found on disk")
     filename = os.path.basename(task.output_file)
     return FileResponse(task.output_file, filename=filename)
+
+
+@router.put("/{task_id}/project", response_model=TaskRead)
+def assign_project(
+    task_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Assign or unassign a task to a project. Body: {"project_id": "uuid-or-null"}"""
+    task = db.query(Task).filter(Task.id == task_id, Task.user_id == current_user.id).first()
+    if not task:
+        raise HTTPException(404, "Task not found")
+    project_id = body.get("project_id")
+    if project_id:
+        from models.project import Project
+        proj = db.query(Project).filter(Project.id == project_id, Project.user_id == current_user.id).first()
+        if not proj:
+            raise HTTPException(404, "Project not found")
+    task.project_id = project_id
+    db.commit()
+    db.refresh(task)
+    return TaskRead.model_validate(task)

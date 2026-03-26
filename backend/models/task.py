@@ -43,6 +43,8 @@ class Task(Base):
     images = Column(Text, default="[]", nullable=False)
     output_file = Column(String, nullable=True)
     output_format = Column(String, nullable=True)
+    user_id    = Column(String, nullable=True, index=True)   # nullable for backwards compat
+    project_id = Column(String, nullable=True, index=True)
 
 
 # ---------------------------------------------------------------------------
@@ -79,5 +81,7 @@ class TaskRead(BaseModel):
     task_type: str
     output_file: Optional[str] = None
     output_format: Optional[str] = None
+    user_id: Optional[str] = None
+    project_id: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

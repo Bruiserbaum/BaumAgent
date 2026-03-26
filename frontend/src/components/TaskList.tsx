@@ -1,9 +1,11 @@
-import { Task, TaskStatus } from '../api/client'
+import { Task, TaskStatus, Project } from '../api/client'
 
 interface Props {
   tasks: Task[]
   onSelect: (id: string) => void
   onDelete: (id: string) => void
+  onDragStart?: (taskId: string) => void
+  projects?: Project[]
 }
 
 function timeAgo(iso: string): string {
@@ -125,7 +127,7 @@ const emptyStyle: React.CSSProperties = {
   fontSize: '16px',
 }
 
-export default function TaskList({ tasks, onSelect, onDelete }: Props) {
+export default function TaskList({ tasks, onSelect, onDelete, onDragStart, projects }: Props) {
   if (tasks.length === 0) {
     return (
       <div style={emptyStyle}>
@@ -137,46 +139,75 @@ export default function TaskList({ tasks, onSelect, onDelete }: Props) {
   return (
     <div>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }`}</style>
-      {tasks.map(task => (
-        <div
-          key={task.id}
-          style={row}
-          onClick={() => onSelect(task.id)}
-        >
-          <StatusBadge status={task.status} />
-          <TypeBadge taskType={task.task_type ?? 'code'} />
+      {tasks.map(task => {
+        const project = projects?.find(p => p.id === task.project_id) ?? null
+        return (
+          <div
+            key={task.id}
+            style={row}
+            draggable={true}
+            onDragStart={e => {
+              e.dataTransfer.setData('taskId', task.id)
+              onDragStart?.(task.id)
+            }}
+            onClick={() => onSelect(task.id)}
+          >
+            <StatusBadge status={task.status} />
+            <TypeBadge taskType={task.task_type ?? 'code'} />
 
-          <div style={descStyle}>
-            <div style={descText}>{task.description}</div>
-            <div style={meta}>
-              {task.repo_url ? task.repo_url : 'Research task'}
-              &nbsp;&bull;&nbsp; {timeAgo(task.created_at)}
-              &nbsp;&bull;&nbsp; {task.llm_backend}/{task.llm_model}
+            <div style={descStyle}>
+              <div style={descText}>{task.description}</div>
+              <div style={meta}>
+                {task.repo_url ? task.repo_url : 'Research task'}
+                &nbsp;&bull;&nbsp; {timeAgo(task.created_at)}
+                &nbsp;&bull;&nbsp; {task.llm_backend}/{task.llm_model}
+              </div>
             </div>
+
+            {project && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  flexShrink: 0,
+                }}
+              >
+                <div
+                  style={{
+                    width: '7px',
+                    height: '7px',
+                    borderRadius: '50%',
+                    backgroundColor: project.color,
+                  }}
+                />
+                <span style={{ fontSize: '11px', color: '#64748b' }}>{project.name}</span>
+              </div>
+            )}
+
+            {task.pr_url && (
+              <a
+                style={prLink}
+                href={task.pr_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+              >
+                PR #{task.pr_number}
+              </a>
+            )}
+
+            {(task.status === 'queued' || task.status === 'failed') && (
+              <button
+                style={deleteBtn}
+                onClick={e => { e.stopPropagation(); onDelete(task.id) }}
+              >
+                Delete
+              </button>
+            )}
           </div>
-
-          {task.pr_url && (
-            <a
-              style={prLink}
-              href={task.pr_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-            >
-              PR #{task.pr_number}
-            </a>
-          )}
-
-          {(task.status === 'queued' || task.status === 'failed') && (
-            <button
-              style={deleteBtn}
-              onClick={e => { e.stopPropagation(); onDelete(task.id) }}
-            >
-              Delete
-            </button>
-          )}
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

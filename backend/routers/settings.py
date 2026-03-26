@@ -1,16 +1,17 @@
 import json
-import os
 from typing import Any
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from config import get_settings
+from database import get_db
+from dependencies import get_current_user
+from models.user import User
 
 router = APIRouter(tags=["settings"])
-
-SETTINGS_FILE = "/app/data/settings.json"
 
 ANTHROPIC_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
 OPENAI_MODELS = ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"]
@@ -30,34 +31,51 @@ class DocFormatSettings(BaseModel):
     summary_as_bullets: bool = True    # summary section uses bullet list
 
 
-def _read_settings_file() -> dict[str, Any]:
-    if os.path.isfile(SETTINGS_FILE):
-        try:
-            with open(SETTINGS_FILE, "r") as fh:
-                return json.load(fh)
-        except Exception:
-            pass
+DEFAULT_DOC_FORMAT = {
+    "title_font_size": 24,
+    "heading_font_size": 14,
+    "body_font_size": 11,
+    "header_color": "#2c3e50",
+    "accent_color": "#3498db",
+    "include_summary": True,
+    "include_links": True,
+    "include_images": False,
+    "section_style": "paragraphs",
+    "page_size": "letter",
+    "summary_as_bullets": True,
+}
+
+
+def _get_user_settings(user: User) -> dict:
+    try:
+        stored = json.loads(user.settings or "{}")
+    except Exception:
+        stored = {}
     cfg = get_settings()
-    return {
+    defaults: dict[str, Any] = {
         "default_llm_backend": cfg.default_llm_backend,
         "default_llm_model": cfg.default_llm_model,
-        "doc_format": DocFormatSettings().model_dump(),
+        "doc_format": DEFAULT_DOC_FORMAT,
     }
+    result = {**defaults, **stored}
+    result["doc_format"] = {**DEFAULT_DOC_FORMAT, **stored.get("doc_format", {})}
+    return result
 
 
-def _write_settings_file(data: dict[str, Any]) -> None:
-    os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
-    with open(SETTINGS_FILE, "w") as fh:
-        json.dump(data, fh, indent=2)
+def _save_user_settings(user: User, data: dict, db: Session) -> None:
+    user.settings = json.dumps(data)
+    db.commit()
 
 
-def get_doc_format() -> dict:
-    """Returns the current doc_format settings as a plain dict."""
-    data = _read_settings_file()
-    defaults = DocFormatSettings()
-    stored = data.get("doc_format", {})
-    merged = {**defaults.model_dump(), **stored}
-    return merged
+def get_doc_format(user_settings: dict | None = None) -> dict:
+    """Returns the current doc_format settings as a plain dict.
+
+    When called without a user_settings dict (e.g. from the worker process),
+    it falls back to the schema defaults.
+    """
+    if user_settings is None:
+        return {**DocFormatSettings().model_dump()}
+    return {**DocFormatSettings().model_dump(), **user_settings.get("doc_format", {})}
 
 
 class PortalSettings(BaseModel):
@@ -102,14 +120,16 @@ async def get_models() -> dict[str, list[str]]:
 
 
 # ---------------------------------------------------------------------------
-# Portal settings
+# Portal settings (per-user, stored in User.settings JSON column)
 # ---------------------------------------------------------------------------
 
 
 @router.get("/api/settings", response_model=PortalSettings)
-def read_settings() -> PortalSettings:
-    data = _read_settings_file()
-    # Fill in doc_format defaults if missing from file
+def read_settings(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PortalSettings:
+    data = _get_user_settings(current_user)
     defaults = DocFormatSettings()
     stored_fmt = data.get("doc_format", {})
     merged_fmt = {**defaults.model_dump(), **stored_fmt}
@@ -118,8 +138,12 @@ def read_settings() -> PortalSettings:
 
 
 @router.put("/api/settings", response_model=PortalSettings)
-def update_settings(payload: PortalSettings) -> PortalSettings:
-    existing = _read_settings_file()
+def update_settings(
+    payload: PortalSettings,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PortalSettings:
+    existing = _get_user_settings(current_user)
     payload_dict = payload.model_dump()
     # Merge doc_format separately to preserve any keys not in payload
     existing_fmt = existing.get("doc_format", {})
@@ -127,7 +151,7 @@ def update_settings(payload: PortalSettings) -> PortalSettings:
     existing_fmt.update(new_fmt)
     existing.update(payload_dict)
     existing["doc_format"] = existing_fmt
-    _write_settings_file(existing)
+    _save_user_settings(current_user, existing, db)
     # Fill defaults for response
     defaults = DocFormatSettings()
     merged_fmt = {**defaults.model_dump(), **existing.get("doc_format", {})}

@@ -2,6 +2,27 @@ const BASE = '/api'
 
 export type TaskStatus = 'queued' | 'running' | 'complete' | 'failed'
 
+export interface User {
+  id: string
+  email: string
+  display_name: string
+  created_at: string
+}
+
+export interface Project {
+  id: string
+  user_id: string
+  name: string
+  color: string
+  position: number
+  created_at: string
+}
+
+export interface ProjectCreate {
+  name: string
+  color?: string
+}
+
 export interface Task {
   id: string
   created_at: string
@@ -20,6 +41,8 @@ export interface Task {
   task_type: string
   output_file: string | null
   output_format: string | null
+  user_id?: string | null
+  project_id?: string | null
 }
 
 export interface TaskCreate {
@@ -84,5 +107,35 @@ export const api = {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  getMe: (): Promise<User> =>
+    fetch(`${BASE}/me`).then(r => r.json()),
+
+  getProjects: (): Promise<Project[]> =>
+    fetch(`${BASE}/projects`).then(r => r.json()),
+
+  createProject: (data: ProjectCreate): Promise<Project> =>
+    fetch(`${BASE}/projects`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  updateProject: (id: string, data: Partial<ProjectCreate>): Promise<Project> =>
+    fetch(`${BASE}/projects/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
+
+  deleteProject: (id: string): Promise<void> =>
+    fetch(`${BASE}/projects/${id}`, { method: 'DELETE' }).then(() => {}),
+
+  assignProject: (taskId: string, projectId: string | null): Promise<Task> =>
+    fetch(`${BASE}/tasks/${taskId}/project`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId }),
     }).then(r => r.json()),
 }

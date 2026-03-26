@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 
 declare const __APP_VERSION__: string
-import { api, Task } from './api/client'
+import { api, Task, User, Project } from './api/client'
 import TaskList from './components/TaskList'
 import TaskDetail from './components/TaskDetail'
 import TaskSubmitForm from './components/TaskSubmitForm'
 import SettingsPanel from './components/SettingsPanel'
 import DataCenterBackground from './components/DataCenterBackground'
+import Sidebar from './components/Sidebar'
+import UserAvatar from './components/UserAvatar'
 
 const styles = {
   app: {
@@ -66,13 +68,6 @@ const styles = {
     fontWeight: 600,
     transition: 'background 0.15s',
   } as React.CSSProperties,
-  content: {
-    maxWidth: '1100px',
-    margin: '0 auto',
-    padding: '24px 16px',
-    position: 'relative' as const,
-    zIndex: 1,
-  } as React.CSSProperties,
   backBtn: {
     backgroundColor: 'transparent',
     color: '#94a3b8',
@@ -99,6 +94,9 @@ export default function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [currentUser, setCurrentUser] = useState<User | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null) // null = all tasks
 
   const loadTasks = useCallback(async () => {
     try {
@@ -109,16 +107,52 @@ export default function App() {
     }
   }, [])
 
+  const loadProjects = useCallback(async () => {
+    try {
+      const data = await api.getProjects()
+      setProjects(data)
+    } catch {
+      // silently ignore
+    }
+  }, [])
+
   useEffect(() => {
     loadTasks()
     const interval = setInterval(loadTasks, 3000)
     return () => clearInterval(interval)
   }, [loadTasks])
 
+  useEffect(() => {
+    api.getMe().then(setCurrentUser).catch(() => {})
+    loadProjects()
+  }, [loadProjects])
+
+  // Refresh projects when tasks change (to keep counts accurate)
+  useEffect(() => {
+    loadProjects()
+  }, [tasks, loadProjects])
+
   const handleDelete = async (id: string) => {
     await api.deleteTask(id)
     await loadTasks()
   }
+
+  // Compute task counts per project
+  const taskCounts: Record<string, number> = { all: tasks.length, unassigned: 0 }
+  for (const task of tasks) {
+    if (!task.project_id) {
+      taskCounts['unassigned'] = (taskCounts['unassigned'] ?? 0) + 1
+    } else {
+      taskCounts[task.project_id] = (taskCounts[task.project_id] ?? 0) + 1
+    }
+  }
+
+  // Filter tasks based on selected project
+  const filteredTasks = selectedProjectId === null
+    ? tasks
+    : selectedProjectId === 'unassigned'
+      ? tasks.filter(t => !t.project_id)
+      : tasks.filter(t => t.project_id === selectedProjectId)
 
   const selectedTask = tasks.find(t => t.id === selectedTaskId) ?? null
 
@@ -138,25 +172,40 @@ export default function App() {
           <button style={styles.newTaskBtn} onClick={() => setShowForm(true)}>
             + New Task
           </button>
+          <UserAvatar user={currentUser} />
         </div>
       </header>
 
-      <main style={styles.content}>
-        {selectedTask ? (
-          <>
-            <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>
-              &larr; Back to Tasks
-            </button>
-            <TaskDetail task={selectedTask} />
-          </>
-        ) : (
-          <TaskList
-            tasks={tasks}
-            onSelect={setSelectedTaskId}
-            onDelete={handleDelete}
-          />
-        )}
-      </main>
+      <div style={{ display: 'flex', minHeight: 'calc(100vh - 57px)' }}>
+        <Sidebar
+          projects={projects}
+          selectedProjectId={selectedProjectId}
+          onSelectProject={id => {
+            setSelectedProjectId(id)
+            setSelectedTaskId(null)
+          }}
+          onProjectsChange={loadProjects}
+          taskCounts={taskCounts}
+        />
+
+        <main style={{ flex: 1, padding: '24px 16px', maxWidth: '900px' }}>
+          {selectedTask ? (
+            <>
+              <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>
+                &larr; Back to Tasks
+              </button>
+              <TaskDetail task={selectedTask} />
+            </>
+          ) : (
+            <TaskList
+              tasks={filteredTasks}
+              onSelect={setSelectedTaskId}
+              onDelete={handleDelete}
+              projects={projects}
+            />
+          )}
+        </main>
+      </div>
 
       {showForm && (
         <div style={styles.overlay} onClick={() => setShowForm(false)}>
@@ -167,6 +216,7 @@ export default function App() {
                 setShowForm(false)
                 await loadTasks()
               }}
+              projects={projects}
             />
           </div>
         </div>

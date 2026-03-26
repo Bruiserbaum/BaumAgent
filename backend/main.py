@@ -7,7 +7,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from database import init_db
-from routers import tasks, logs, settings as settings_router
+from models import user as user_model, project as project_model  # noqa: F401 — ensures tables are created
+from routers import tasks, logs, settings as settings_router, users, projects
 
 
 STATIC_DIR = "/app/static"
@@ -34,6 +35,8 @@ app.add_middleware(
 app.include_router(tasks.router)
 app.include_router(logs.router)
 app.include_router(settings_router.router)
+app.include_router(users.router)
+app.include_router(projects.router)
 
 # Serve frontend static assets if the build exists
 _assets_dir = os.path.join(STATIC_DIR, "assets")
