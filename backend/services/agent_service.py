@@ -13,6 +13,7 @@ from services.github_service import GitHubService
 from services.llm import get_llm_client
 from services.llm.base import ToolDefinition
 from services import search_service
+from routers.settings import get_doc_format
 
 
 CODE_SYSTEM_PROMPT = (
@@ -430,6 +431,7 @@ class AgentService:
                 sources=self._research_result["sources"],
                 output_format=output_format,
                 output_dir=output_dir,
+                fmt=get_doc_format(),
             )
             task.output_file = output_file
             self._log(f"Document saved: {output_file}")

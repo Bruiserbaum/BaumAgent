@@ -3,44 +3,98 @@ import os
 from pathlib import Path
 
 
-def generate_pdf(title: str, sections: list[dict], sources: list[str], output_path: str) -> None:
+def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
+    h = hex_color.lstrip('#')
+    return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
+
+
+def _build_summary_section(sections: list[dict], summary_as_bullets: bool) -> dict:
+    """Build a summary section from the first ~100 chars of each section's content."""
+    bullets = []
+    for sec in sections:
+        content = sec.get('content', '')
+        # Take first line or first 100 chars, whichever is shorter
+        first_line = content.split('\n')[0].strip()
+        snippet = first_line[:100] if first_line else content[:100].strip()
+        if snippet:
+            bullets.append(snippet)
+    if summary_as_bullets:
+        summary_content = '\n'.join(f"• {b}" for b in bullets)
+    else:
+        summary_content = '\n'.join(bullets)
+    return {"heading": "Summary", "content": summary_content}
+
+
+def _render_pdf_section_content(content: str, section_style: str, body_style) -> list:
+    """Return a list of Paragraph flowables based on section_style."""
+    from reportlab.platypus import Paragraph
+
+    lines = [l.strip() for l in content.split('\n') if l.strip()]
+    result = []
+    if section_style == "bullets":
+        for line in lines:
+            result.append(Paragraph(f"• {line}", body_style))
+    elif section_style == "mixed":
+        for i, line in enumerate(lines):
+            if i == 0:
+                result.append(Paragraph(line, body_style))
+            else:
+                result.append(Paragraph(f"• {line}", body_style))
+    else:  # "paragraphs" (default)
+        for line in lines:
+            result.append(Paragraph(line, body_style))
+    return result
+
+
+def generate_pdf(title: str, sections: list[dict], sources: list[str],
+                 output_path: str, fmt: dict) -> None:
     """Generate a PDF report using reportlab."""
-    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.pagesizes import letter, A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
     from reportlab.lib.colors import HexColor
 
-    doc = SimpleDocTemplate(output_path, pagesize=letter,
+    pagesize = A4 if fmt.get("page_size") == "a4" else letter
+
+    doc = SimpleDocTemplate(output_path, pagesize=pagesize,
                             rightMargin=inch, leftMargin=inch,
                             topMargin=inch, bottomMargin=inch)
     styles = getSampleStyleSheet()
 
-    # Custom styles
+    # Custom styles driven by fmt
     title_style = ParagraphStyle('CustomTitle', parent=styles['Title'],
-                                  fontSize=24, spaceAfter=20)
+                                  fontSize=fmt["title_font_size"], spaceAfter=20)
     heading_style = ParagraphStyle('CustomHeading', parent=styles['Heading2'],
-                                    fontSize=14, spaceBefore=16, spaceAfter=8,
-                                    textColor=HexColor('#2c3e50'))
+                                    fontSize=fmt["heading_font_size"], spaceBefore=16, spaceAfter=8,
+                                    textColor=HexColor(fmt["header_color"]))
+    body_font_size = fmt["body_font_size"]
     body_style = ParagraphStyle('CustomBody', parent=styles['Normal'],
-                                 fontSize=11, leading=16, spaceAfter=8)
+                                 fontSize=body_font_size,
+                                 leading=round(body_font_size * 1.45),
+                                 spaceAfter=8)
     source_style = ParagraphStyle('Source', parent=styles['Normal'],
                                    fontSize=9, textColor=HexColor('#7f8c8d'))
 
     story = []
     story.append(Paragraph(title, title_style))
-    story.append(HRFlowable(width="100%", thickness=2, color=HexColor('#3498db')))
+    story.append(HRFlowable(width="100%", thickness=2, color=HexColor(fmt["accent_color"])))
     story.append(Spacer(1, 0.2 * inch))
 
-    for section in sections:
+    # Build sections list, optionally prepending a summary
+    all_sections = list(sections)
+    if fmt.get("include_summary") and all_sections:
+        summary_sec = _build_summary_section(all_sections, fmt.get("summary_as_bullets", True))
+        all_sections = [summary_sec] + all_sections
+
+    section_style_val = fmt.get("section_style", "paragraphs")
+
+    for section in all_sections:
         story.append(Paragraph(section['heading'], heading_style))
-        # Split content by newlines and add each as a paragraph
-        for line in section['content'].split('\n'):
-            if line.strip():
-                story.append(Paragraph(line.strip(), body_style))
+        story.extend(_render_pdf_section_content(section['content'], section_style_val, body_style))
         story.append(Spacer(1, 0.1 * inch))
 
-    if sources:
+    if fmt.get("include_links") and sources:
         story.append(HRFlowable(width="100%", thickness=1, color=HexColor('#bdc3c7')))
         story.append(Spacer(1, 0.1 * inch))
         story.append(Paragraph("Sources", heading_style))
@@ -50,28 +104,72 @@ def generate_pdf(title: str, sections: list[dict], sources: list[str], output_pa
     doc.build(story)
 
 
-def generate_docx(title: str, sections: list[dict], sources: list[str], output_path: str) -> None:
+def generate_docx(title: str, sections: list[dict], sources: list[str],
+                  output_path: str, fmt: dict) -> None:
     """Generate a Word document using python-docx."""
     from docx import Document
-    from docx.shared import Pt, RGBColor, Inches
+    from docx.shared import Pt, RGBColor, Inches, Mm
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
     doc = Document()
 
+    # Page size
+    if fmt.get("page_size") == "a4":
+        section_obj = doc.sections[0]
+        section_obj.page_width = Mm(210)
+        section_obj.page_height = Mm(297)
+
     # Title
     title_para = doc.add_heading(title, 0)
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in title_para.runs:
+        run.font.size = Pt(fmt["title_font_size"])
 
     doc.add_paragraph()  # spacer
 
-    for section in sections:
-        doc.add_heading(section['heading'], level=1)
-        for line in section['content'].split('\n'):
-            if line.strip():
-                doc.add_paragraph(line.strip())
+    # Parse heading color once
+    header_rgb = _hex_to_rgb(fmt["header_color"])
 
-    if sources:
-        doc.add_heading('Sources', level=1)
+    # Build sections list, optionally prepending a summary
+    all_sections = list(sections)
+    if fmt.get("include_summary") and all_sections:
+        summary_sec = _build_summary_section(all_sections, fmt.get("summary_as_bullets", True))
+        all_sections = [summary_sec] + all_sections
+
+    section_style_val = fmt.get("section_style", "paragraphs")
+    body_pt = Pt(fmt["body_font_size"])
+
+    for section in all_sections:
+        heading_para = doc.add_heading(section['heading'], level=1)
+        for run in heading_para.runs:
+            run.font.size = Pt(fmt["heading_font_size"])
+            run.font.color.rgb = RGBColor(*header_rgb)
+
+        lines = [l.strip() for l in section['content'].split('\n') if l.strip()]
+        for i, line in enumerate(lines):
+            if section_style_val == "bullets":
+                p = doc.add_paragraph(style='List Bullet')
+                run = p.add_run(line)
+                run.font.size = body_pt
+            elif section_style_val == "mixed":
+                if i == 0:
+                    p = doc.add_paragraph()
+                    run = p.add_run(line)
+                    run.font.size = body_pt
+                else:
+                    p = doc.add_paragraph(style='List Bullet')
+                    run = p.add_run(line)
+                    run.font.size = body_pt
+            else:  # paragraphs
+                p = doc.add_paragraph()
+                run = p.add_run(line)
+                run.font.size = body_pt
+
+    if fmt.get("include_links") and sources:
+        sources_heading = doc.add_heading('Sources', level=1)
+        for run in sources_heading.runs:
+            run.font.size = Pt(fmt["heading_font_size"])
+            run.font.color.rgb = RGBColor(*header_rgb)
         for i, src in enumerate(sources, 1):
             p = doc.add_paragraph(style='List Number')
             p.add_run(f"{src}").font.size = Pt(9)
@@ -80,7 +178,7 @@ def generate_docx(title: str, sections: list[dict], sources: list[str], output_p
 
 
 def generate_document(title: str, sections: list[dict], sources: list[str],
-                       output_format: str, output_dir: str) -> str:
+                       output_format: str, output_dir: str, fmt: dict) -> str:
     """Generate document and return full path."""
     os.makedirs(output_dir, exist_ok=True)
     ext = "pdf" if output_format == "pdf" else "docx"
@@ -88,8 +186,8 @@ def generate_document(title: str, sections: list[dict], sources: list[str],
     full_path = os.path.join(output_dir, filename)
 
     if output_format == "pdf":
-        generate_pdf(title, sections, sources, full_path)
+        generate_pdf(title, sections, sources, full_path, fmt)
     else:
-        generate_docx(title, sections, sources, full_path)
+        generate_docx(title, sections, sources, full_path, fmt)
 
     return full_path

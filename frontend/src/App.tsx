@@ -5,6 +5,7 @@ import { api, Task } from './api/client'
 import TaskList from './components/TaskList'
 import TaskDetail from './components/TaskDetail'
 import TaskSubmitForm from './components/TaskSubmitForm'
+import SettingsPanel from './components/SettingsPanel'
 
 const styles = {
   app: {
@@ -30,9 +31,25 @@ const styles = {
     color: '#7dd3fc',
     letterSpacing: '-0.5px',
   } as React.CSSProperties,
+  headerActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  } as React.CSSProperties,
   newTaskBtn: {
     backgroundColor: '#0f3460',
     color: '#7dd3fc',
+    border: '1px solid #1e4d8c',
+    borderRadius: '6px',
+    padding: '8px 18px',
+    cursor: 'pointer',
+    fontSize: '14px',
+    fontWeight: 600,
+    transition: 'background 0.15s',
+  } as React.CSSProperties,
+  settingsBtn: {
+    backgroundColor: '#0f2030',
+    color: '#94a3b8',
     border: '1px solid #1e4d8c',
     borderRadius: '6px',
     padding: '8px 18px',
@@ -71,6 +88,7 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   const loadTasks = useCallback(async () => {
     try {
@@ -101,9 +119,14 @@ export default function App() {
           <h1 style={styles.title}>BaumAgent</h1>
           <span style={{ color: '#475569', fontSize: '12px', fontWeight: 400 }}>v{__APP_VERSION__}</span>
         </div>
-        <button style={styles.newTaskBtn} onClick={() => setShowForm(true)}>
-          + New Task
-        </button>
+        <div style={styles.headerActions}>
+          <button style={styles.settingsBtn} onClick={() => setShowSettings(true)}>
+            ⚙ Settings
+          </button>
+          <button style={styles.newTaskBtn} onClick={() => setShowForm(true)}>
+            + New Task
+          </button>
+        </div>
       </header>
 
       <main style={styles.content}>
@@ -133,6 +156,14 @@ export default function App() {
                 await loadTasks()
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {showSettings && (
+        <div style={styles.overlay} onClick={() => setShowSettings(false)}>
+          <div onClick={e => e.stopPropagation()}>
+            <SettingsPanel onClose={() => setShowSettings(false)} />
           </div>
         </div>
       )}

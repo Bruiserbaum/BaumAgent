@@ -36,6 +36,26 @@ export interface ModelsResponse {
   ollama: string[]
 }
 
+export interface DocFormatSettings {
+  title_font_size: number
+  heading_font_size: number
+  body_font_size: number
+  header_color: string
+  accent_color: string
+  include_summary: boolean
+  include_links: boolean
+  include_images: boolean
+  section_style: 'paragraphs' | 'bullets' | 'mixed'
+  page_size: 'letter' | 'a4'
+  summary_as_bullets: boolean
+}
+
+export interface PortalSettings {
+  default_llm_backend: string
+  default_llm_model: string
+  doc_format: DocFormatSettings
+}
+
 export const api = {
   createTask: (data: FormData): Promise<Task> =>
     fetch(`${BASE}/tasks`, { method: 'POST', body: data }).then(r => r.json()),
@@ -55,4 +75,14 @@ export const api = {
   downloadTask: (id: string): void => {
     window.open(`${BASE}/tasks/${id}/download`, '_blank')
   },
+
+  getSettings: (): Promise<PortalSettings> =>
+    fetch(`${BASE}/settings`).then(r => r.json()),
+
+  updateSettings: (data: PortalSettings): Promise<PortalSettings> =>
+    fetch(`${BASE}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
 }
