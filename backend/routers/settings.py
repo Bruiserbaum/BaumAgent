@@ -14,7 +14,17 @@ from models.user import User
 router = APIRouter(tags=["settings"])
 
 ANTHROPIC_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
-OPENAI_MODELS = ["gpt-4o", "gpt-4o-mini", "o1", "o3-mini"]
+
+# Fallback used when the OpenAI key is absent or the models endpoint fails
+OPENAI_MODELS_FALLBACK = [
+    "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+    "gpt-4o", "gpt-4o-mini",
+    "o3", "o3-mini", "o4-mini",
+    "o1", "o1-mini",
+]
+
+# Prefixes that identify chat-capable models worth showing in the UI
+_OPENAI_CHAT_PREFIXES = ("gpt-", "o1", "o2", "o3", "o4", "o5", "chatgpt-")
 
 
 class DocFormatSettings(BaseModel):
@@ -119,19 +129,43 @@ def health() -> dict[str, str]:
 @router.get("/api/models")
 async def get_models() -> dict[str, list[str]]:
     cfg = get_settings()
+
+    # Fetch Ollama models
     ollama_models: list[str] = []
     try:
         async with httpx.AsyncClient(timeout=3) as client:
             resp = await client.get(f"{cfg.ollama_base_url}/api/tags")
             if resp.status_code == 200:
-                data = resp.json()
-                ollama_models = [m["name"] for m in data.get("models", [])]
+                ollama_models = [m["name"] for m in resp.json().get("models", [])]
     except Exception:
         pass
 
+    # Fetch OpenAI models live; fall back to static list on any failure
+    openai_models: list[str] = []
+    if cfg.openai_api_key:
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                resp = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {cfg.openai_api_key}"},
+                )
+                if resp.status_code == 200:
+                    all_ids: list[str] = [m["id"] for m in resp.json().get("data", [])]
+                    # Keep only chat-capable models, sorted alphabetically
+                    openai_models = sorted(
+                        m for m in all_ids
+                        if m.startswith(_OPENAI_CHAT_PREFIXES)
+                        and not any(x in m for x in ("-realtime-", "-audio-", "-embedding", "-search-", "-instruct"))
+                    )
+        except Exception:
+            pass
+
+    if not openai_models:
+        openai_models = OPENAI_MODELS_FALLBACK
+
     return {
         "anthropic": ANTHROPIC_MODELS,
-        "openai": OPENAI_MODELS,
+        "openai": openai_models,
         "ollama": ollama_models,
     }
 
