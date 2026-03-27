@@ -35,7 +35,10 @@ class OpenAIClient:
         tools: list[ToolDefinition],
         tool_executor: Any,
         log_fn: Any,
+        max_rounds: int = 50,
     ) -> str:
+        has_finish_tool = any(t["name"] == "finish" for t in tools)
+
         openai_tools = [
             {
                 "type": "function",
@@ -54,8 +57,10 @@ class OpenAIClient:
             {"role": "user", "content": content},
         ]
         final_text = ""
+        finish_called = False
+        nudge_count = 0
 
-        while True:
+        for round_num in range(max_rounds):
             for _attempt in range(6):
                 try:
                     response = await self._client.chat.completions.create(
@@ -80,10 +85,25 @@ class OpenAIClient:
 
             tool_calls = message.tool_calls or []
 
-            if choice.finish_reason == "stop" and not tool_calls:
-                break
+            # Hit token limit — nudge LLM to call finish()
+            if choice.finish_reason == "length" and has_finish_tool and not finish_called and nudge_count < 3:
+                log_fn(f"[agent] Response hit token limit on round {round_num + 1} — nudging finish()")
+                messages.append({"role": "user", "content": (
+                    "Your previous response was cut off by the token limit. "
+                    "Please call the finish() tool now with the results you have gathered so far."
+                )})
+                nudge_count += 1
+                continue
 
             if not tool_calls:
+                if has_finish_tool and not finish_called and nudge_count < 3:
+                    log_fn(f"[agent] No tool call on round {round_num + 1} — nudging finish() (nudge {nudge_count + 1})")
+                    messages.append({"role": "user", "content": (
+                        "You responded with text but did not call any tool. "
+                        "Please call finish() now with your complete structured results."
+                    )})
+                    nudge_count += 1
+                    continue
                 break
 
             for tc in tool_calls:
@@ -91,6 +111,8 @@ class OpenAIClient:
                 log_fn(f"[tool] {tc.function.name}({args})")
                 try:
                     result = await tool_executor(tc.function.name, args)
+                    if tc.function.name == "finish":
+                        finish_called = True
                 except Exception as exc:
                     result = f"Error: {exc}"
                 messages.append(
@@ -100,5 +122,11 @@ class OpenAIClient:
                         "content": result,
                     }
                 )
+
+            if finish_called:
+                break
+
+        if round_num + 1 >= max_rounds:
+            log_fn(f"[agent] Max rounds ({max_rounds}) reached")
 
         return final_text
