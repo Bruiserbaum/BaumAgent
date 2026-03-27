@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import re
+import traceback
 from datetime import datetime, timezone
 
 import httpx
@@ -445,9 +446,15 @@ class AgentService:
                 )
                 task.output_file = output_file
                 db.commit()
-                self._log(f"Document saved: {output_file}")
+                if os.path.exists(output_file):
+                    size = os.path.getsize(output_file)
+                    self._log(f"Document saved: {output_file} ({size} bytes)")
+                else:
+                    self._log(f"[ERROR] generate_document returned path but file does not exist: {output_file}")
+                    task.output_file = None
+                    db.commit()
             except Exception as _doc_err:
-                self._log(f"[ERROR] Document generation failed: {_doc_err}")
+                self._log(f"[ERROR] Document generation failed: {_doc_err}\n{traceback.format_exc()}")
         else:
             self._log("WARNING: LLM did not call finish() — no research result to generate document from.")
 

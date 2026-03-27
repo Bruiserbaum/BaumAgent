@@ -3,6 +3,12 @@ import os
 from pathlib import Path
 
 
+def _safe(text: str) -> str:
+    """Replace characters outside Latin-1 with '?' so reportlab's default
+    Helvetica font doesn't throw UnicodeEncodeError."""
+    return text.encode('latin-1', errors='replace').decode('latin-1')
+
+
 def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     h = hex_color.lstrip('#')
     return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
@@ -77,7 +83,7 @@ def generate_pdf(title: str, sections: list[dict], sources: list[str],
                                    fontSize=9, textColor=HexColor('#7f8c8d'))
 
     story = []
-    story.append(Paragraph(title, title_style))
+    story.append(Paragraph(_safe(title), title_style))
     story.append(HRFlowable(width="100%", thickness=2, color=HexColor(fmt["accent_color"])))
     story.append(Spacer(1, 0.2 * inch))
 
@@ -90,8 +96,8 @@ def generate_pdf(title: str, sections: list[dict], sources: list[str],
     section_style_val = fmt.get("section_style", "paragraphs")
 
     for section in all_sections:
-        story.append(Paragraph(section['heading'], heading_style))
-        story.extend(_render_pdf_section_content(section['content'], section_style_val, body_style))
+        story.append(Paragraph(_safe(section['heading']), heading_style))
+        story.extend(_render_pdf_section_content(_safe(section['content']), section_style_val, body_style))
         story.append(Spacer(1, 0.1 * inch))
 
     if fmt.get("include_links") and sources:
@@ -99,7 +105,7 @@ def generate_pdf(title: str, sections: list[dict], sources: list[str],
         story.append(Spacer(1, 0.1 * inch))
         story.append(Paragraph("Sources", heading_style))
         for i, src in enumerate(sources, 1):
-            story.append(Paragraph(f"{i}. {src}", source_style))
+            story.append(Paragraph(f"{i}. {_safe(src)}", source_style))
 
     doc.build(story)
 
@@ -120,7 +126,7 @@ def generate_docx(title: str, sections: list[dict], sources: list[str],
         section_obj.page_height = Mm(297)
 
     # Title
-    title_para = doc.add_heading(title, 0)
+    title_para = doc.add_heading(_safe(title), 0)
     title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     for run in title_para.runs:
         run.font.size = Pt(fmt["title_font_size"])
@@ -140,12 +146,12 @@ def generate_docx(title: str, sections: list[dict], sources: list[str],
     body_pt = Pt(fmt["body_font_size"])
 
     for section in all_sections:
-        heading_para = doc.add_heading(section['heading'], level=1)
+        heading_para = doc.add_heading(_safe(section['heading']), level=1)
         for run in heading_para.runs:
             run.font.size = Pt(fmt["heading_font_size"])
             run.font.color.rgb = RGBColor(*header_rgb)
 
-        lines = [l.strip() for l in section['content'].split('\n') if l.strip()]
+        lines = [l.strip() for l in _safe(section['content']).split('\n') if l.strip()]
         for i, line in enumerate(lines):
             if section_style_val == "bullets":
                 p = doc.add_paragraph(style='List Bullet')

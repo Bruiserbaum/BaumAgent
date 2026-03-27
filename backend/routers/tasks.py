@@ -174,7 +174,22 @@ async def download_task_output(
             db.commit()
             return FileResponse(found_path, filename=files[0])
 
-    raise HTTPException(status_code=404, detail="No output file for this task")
+    # Build a diagnostic message so the user (and logs) can see exactly what happened
+    if task.output_file:
+        detail = (
+            f"Output file path is recorded ({task.output_file}) but the file does not exist. "
+            f"Output directory ({output_dir}) "
+            + ("exists but is empty." if os.path.isdir(output_dir) else "does not exist.")
+        )
+    else:
+        detail = (
+            "No output file path recorded for this task. "
+            f"Output directory ({output_dir}) "
+            + ("exists but is empty — document generation likely failed (check task log)."
+               if os.path.isdir(output_dir)
+               else "does not exist — document was never generated (check task log).")
+        )
+    raise HTTPException(status_code=404, detail=detail)
 
 
 @router.put("/{task_id}/project", response_model=TaskRead)
