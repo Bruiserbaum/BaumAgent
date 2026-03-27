@@ -155,7 +155,7 @@ async def get_models() -> dict[str, list[str]]:
                     openai_models = sorted(
                         m for m in all_ids
                         if m.startswith(_OPENAI_CHAT_PREFIXES)
-                        and not any(x in m for x in ("-realtime-", "-audio-", "-embedding", "-search-", "-instruct"))
+                        and not any(x in m for x in ("-realtime-", "-audio-", "-embedding", "-search-", "-instruct", "-deep-research"))
                     )
         except Exception:
             pass
