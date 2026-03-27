@@ -140,7 +140,7 @@ function TaskCard({
             Cancel
           </button>
         )}
-        {task.status === 'failed' && (
+        {(task.status === 'failed' || task.status === 'complete') && (
           <button
             onClick={e => { e.stopPropagation(); onDelete(task.id) }}
             style={{

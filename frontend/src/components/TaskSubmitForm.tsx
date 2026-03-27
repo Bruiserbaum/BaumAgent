@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, FormEvent, DragEvent, ClipboardEvent } from 'react'
-import { api, ModelsResponse, Project, GithubRepo } from '../api/client'
+import { api, ModelsResponse, Project, GithubRepo, PortalSettings } from '../api/client'
 
 interface Props {
   onClose: () => void
@@ -100,8 +100,9 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
   const [baseBranch, setBaseBranch] = useState('main')
   const [outputFormat, setOutputFormat] = useState<'pdf' | 'docx'>('pdf')
   const [backend, setBackend] = useState('anthropic')
-  const [model, setModel] = useState('claude-opus-4-6')
+  const [model, setModel] = useState('')
   const [models, setModels] = useState<ModelsResponse>({ anthropic: [], openai: [], ollama: [] })
+  const [portalSettings, setPortalSettings] = useState<PortalSettings | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [projectId, setProjectId] = useState<string>('')
@@ -125,10 +126,19 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
   const formRef = useRef<HTMLFormElement>(null)
 
   useEffect(() => {
-    api.getModels().then(setModels).catch(() => {})
     api.getRepos().then(setRepos).catch(() => {})
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     setSpeechSupported(!!SR)
+
+    Promise.all([api.getModels(), api.getSettings()]).then(([m, s]) => {
+      setModels(m)
+      setPortalSettings(s)
+      // Apply code-task defaults from settings
+      const b = s.code_backend || s.default_llm_backend || 'anthropic'
+      const mdl = s.code_model || s.default_llm_model || ''
+      setBackend(b)
+      setModel(mdl || (m[b as keyof ModelsResponse]?.[0] ?? ''))
+    }).catch(() => {})
   }, [])
 
   // Close repo dropdown when clicking outside
@@ -155,11 +165,27 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
     setRepoSearch('')
   }
 
-  // When backend changes, default to first available model
+  // When task type changes, switch to per-context defaults
+  useEffect(() => {
+    if (!portalSettings) return
+    const s = portalSettings
+    let b: string, mdl: string
+    if (taskType === 'research') {
+      b = s.research_backend || s.default_llm_backend || 'anthropic'
+      mdl = s.research_model || s.default_llm_model || ''
+    } else {
+      b = s.code_backend || s.default_llm_backend || 'anthropic'
+      mdl = s.code_model || s.default_llm_model || ''
+    }
+    setBackend(b)
+    setModel(mdl || models[b as keyof ModelsResponse]?.[0] || '')
+  }, [taskType, portalSettings]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When backend changes manually, default to first available model
   useEffect(() => {
     const list = models[backend as keyof ModelsResponse] ?? []
-    if (list.length > 0) setModel(list[0])
-  }, [backend, models])
+    if (list.length > 0 && !model) setModel(list[0])
+  }, [backend, models]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const modelOptions = models[backend as keyof ModelsResponse] ?? []
 

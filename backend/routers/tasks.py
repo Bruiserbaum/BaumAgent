@@ -165,10 +165,10 @@ def delete_task(
     task = db.query(Task).filter(Task.id == task_id).first()
     if task is None or task.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status not in (TaskStatus.QUEUED, TaskStatus.FAILED):
+    if task.status == TaskStatus.RUNNING:
         raise HTTPException(
             status_code=409,
-            detail="Only queued or failed tasks can be deleted.",
+            detail="Cannot delete a running task — cancel it first.",
         )
     db.delete(task)
     db.commit()
