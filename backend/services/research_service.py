@@ -15,6 +15,12 @@ def _hex_to_rgb(hex_color: str) -> tuple[int, int, int]:
     return tuple(int(h[i:i+2], 16) for i in (0, 2, 4))
 
 
+def _strip_leading_bullets(text: str) -> str:
+    """Remove leading bullet/dash/special chars that aren't printable ASCII letters or digits."""
+    import re
+    return re.sub(r'^[\s\W•\-–—*#>]+', '', text).strip()
+
+
 def _build_summary_section(sections: list[dict], summary_as_bullets: bool) -> dict:
     """Build a summary section from the first ~100 chars of each section's content."""
     bullets = []
@@ -23,6 +29,7 @@ def _build_summary_section(sections: list[dict], summary_as_bullets: bool) -> di
         # Take first line or first 100 chars, whichever is shorter
         first_line = content.split('\n')[0].strip()
         snippet = first_line[:100] if first_line else content[:100].strip()
+        snippet = _strip_leading_bullets(snippet)
         if snippet:
             bullets.append(snippet)
     if summary_as_bullets:
@@ -236,13 +243,24 @@ def generate_docx(title: str, sections: list[dict], sources: list[str],
     doc.save(output_path)
 
 
+def _title_to_filename(title: str) -> str:
+    """Convert a report title to a safe filename (no extension)."""
+    import re
+    # Keep alphanumerics, spaces, hyphens; replace everything else
+    safe = re.sub(r'[^\w\s\-]', '', title)
+    # Collapse whitespace to single underscore
+    safe = re.sub(r'\s+', '_', safe.strip())
+    # Truncate so the full path stays reasonable
+    return safe[:80] if safe else "report"
+
+
 def generate_document(title: str, sections: list[dict], sources: list[str],
                        output_format: str, output_dir: str, fmt: dict,
                        image_urls: list[str] | None = None) -> str:
     """Generate document and return full path."""
     os.makedirs(output_dir, exist_ok=True)
     ext = "pdf" if output_format == "pdf" else "docx"
-    filename = f"report.{ext}"
+    filename = f"{_title_to_filename(title)}.{ext}"
     full_path = os.path.join(output_dir, filename)
 
     if output_format == "pdf":
