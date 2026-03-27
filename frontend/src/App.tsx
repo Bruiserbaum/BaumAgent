@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 
 declare const __APP_VERSION__: string
-import { api, Task, User, Project } from './api/client'
+import { api, Task, User, Project, QueueStatus } from './api/client'
 import KanbanBoard from './components/KanbanBoard'
 import TaskDetail from './components/TaskDetail'
 import TaskSubmitForm from './components/TaskSubmitForm'
@@ -98,6 +98,7 @@ interface ChatMessage {
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([])
+  const [queueStatus, setQueueStatus] = useState<QueueStatus>({ queued: [], running: [] })
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -107,7 +108,11 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
 
   const loadTasks = useCallback(async () => {
-    try { setTasks(await api.getTasks()) } catch { /* ignore */ }
+    try {
+      const [t, q] = await Promise.all([api.getTasks(), api.getQueueStatus()])
+      setTasks(t)
+      setQueueStatus(q)
+    } catch { /* ignore */ }
   }, [])
 
   const loadProjects = useCallback(async () => {
@@ -163,6 +168,7 @@ export default function App() {
               <KanbanBoard
                 tasks={tasks}
                 projects={projects}
+                queueStatus={queueStatus}
                 onSelect={setSelectedTaskId}
                 onDelete={handleDelete}
                 onTasksChange={loadTasks}

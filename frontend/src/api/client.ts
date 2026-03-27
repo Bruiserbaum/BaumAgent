@@ -60,6 +60,11 @@ export interface ModelsResponse {
   ollama: string[]
 }
 
+export interface QueueStatus {
+  queued: string[]   // task IDs in FIFO order
+  running: string[]  // task IDs currently being executed
+}
+
 export interface DocFormatSettings {
   title_font_size: number
   heading_font_size: number
@@ -115,6 +120,9 @@ export const api = {
 
   getModels: (): Promise<ModelsResponse> =>
     fetch(`${BASE}/models`).then(r => r.json()),
+
+  getQueueStatus: (): Promise<QueueStatus> =>
+    fetch(`${BASE}/queue`).then(r => r.json()),
 
   downloadTask: (id: string): void => {
     window.open(`${BASE}/tasks/${id}/download`, '_blank')

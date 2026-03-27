@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { api, Task, Project } from '../api/client'
+import { api, Task, Project, QueueStatus } from '../api/client'
 
 const PRESET_COLORS = [
   '#3b82f6', '#8b5cf6', '#ec4899', '#ef4444',
@@ -10,6 +10,7 @@ const PRESET_COLORS = [
 interface Props {
   tasks: Task[]
   projects: Project[]
+  queueStatus: QueueStatus
   onSelect: (id: string) => void
   onDelete: (id: string) => void
   onTasksChange: () => void
@@ -33,17 +34,20 @@ const STATUS_COLORS: Record<string, { bg: string; color: string }> = {
 
 function TaskCard({
   task,
+  queuePosition,
   onSelect,
   onDelete,
   onRetry,
 }: {
   task: Task
+  queuePosition?: number   // 1-based position in global queue; undefined if not in queue
   onSelect: (id: string) => void
   onDelete: (id: string) => void
   onRetry: (id: string) => void
 }) {
   const colors = STATUS_COLORS[task.status] ?? STATUS_COLORS.queued
   const isResearch = task.task_type === 'research'
+  const isNext = queuePosition === 1
 
   return (
     <div
@@ -52,7 +56,7 @@ function TaskCard({
       onClick={() => onSelect(task.id)}
       style={{
         backgroundColor: '#16213e',
-        border: '1px solid #1e3a5f',
+        border: `1px solid ${isNext ? '#1e4d8c' : '#1e3a5f'}`,
         borderRadius: '7px',
         padding: '10px 12px',
         marginBottom: '8px',
@@ -69,6 +73,17 @@ function TaskCard({
         }}>
           {task.status}
         </span>
+        {queuePosition != null && (
+          <span style={{
+            backgroundColor: isNext ? '#0f3460' : '#1e293b',
+            color: isNext ? '#7dd3fc' : '#64748b',
+            border: `1px solid ${isNext ? '#1e4d8c' : '#334155'}`,
+            borderRadius: '4px', padding: '1px 6px',
+            fontSize: '10px', fontWeight: 700, flexShrink: 0,
+          }}>
+            {isNext ? '▶ Next' : `#${queuePosition}`}
+          </span>
+        )}
         <span style={{
           backgroundColor: isResearch ? '#0d3340' : '#1e293b',
           color: isResearch ? '#38bdf8' : '#64748b',
@@ -128,7 +143,7 @@ function TaskCard({
   )
 }
 
-export default function KanbanBoard({ tasks, projects, onSelect, onDelete, onTasksChange, onProjectsChange }: Props) {
+export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, onDelete, onTasksChange, onProjectsChange }: Props) {
   const [dragOverColId, setDragOverColId] = useState<string | null>(null)
   const [showAddProject, setShowAddProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
@@ -165,6 +180,13 @@ export default function KanbanBoard({ tasks, projects, onSelect, onDelete, onTas
     finally { setAddingProject(false) }
   }
 
+  // Build position map: task ID → 1-based position in the global queue
+  const queuePositionMap: Record<string, number> = {}
+  queueStatus.queued.forEach((id, idx) => { queuePositionMap[id] = idx + 1 })
+
+  const runningCount = queueStatus.running.length
+  const queuedCount = queueStatus.queued.length
+
   const columns: Array<{ id: string | null; label: string; color: string }> = [
     { id: null, label: 'Unassigned', color: '#475569' },
     ...projects.map(p => ({ id: p.id, label: p.name, color: p.color })),
@@ -181,14 +203,48 @@ export default function KanbanBoard({ tasks, projects, onSelect, onDelete, onTas
   const colCount = columns.length // project data columns (management column is fixed-width)
 
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }`}</style>
+
+      {/* Queue status bar */}
+      {(runningCount > 0 || queuedCount > 0) && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '16px', flexShrink: 0,
+          padding: '6px 14px',
+          backgroundColor: 'rgba(8,12,28,0.7)',
+          borderBottom: '1px solid rgba(20,50,110,0.5)',
+          fontSize: '12px',
+        }}>
+          <span style={{ color: '#475569', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Queue
+          </span>
+          {runningCount > 0 && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#60a5fa' }}>
+              <span style={{
+                width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#60a5fa',
+                display: 'inline-block', animation: 'pulse 1.5s infinite', flexShrink: 0,
+              }} />
+              {runningCount} running
+            </span>
+          )}
+          {queuedCount > 0 && (
+            <span style={{ color: '#64748b' }}>
+              {queuedCount} waiting
+            </span>
+          )}
+          {runningCount === 0 && queuedCount === 0 && (
+            <span style={{ color: '#334155' }}>idle</span>
+          )}
+        </div>
+      )}
+
     <div style={{
       display: 'grid',
       gridTemplateColumns: `repeat(${colCount}, 1fr) 160px`,
-      height: '100%',
+      flex: 1,
       minHeight: 0,
       overflow: 'hidden',
     }}>
-      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }`}</style>
 
       {columns.map((col, idx) => {
         const colKey = col.id ?? 'unassigned'
@@ -242,6 +298,7 @@ export default function KanbanBoard({ tasks, projects, onSelect, onDelete, onTas
               ) : (
                 colTasks.map(task => (
                   <TaskCard key={task.id} task={task}
+                    queuePosition={queuePositionMap[task.id]}
                     onSelect={onSelect} onDelete={onDelete} onRetry={handleRetry} />
                 ))
               )}
@@ -250,7 +307,7 @@ export default function KanbanBoard({ tasks, projects, onSelect, onDelete, onTas
         )
       })}
 
-      {/* Add project column */}
+      {/* Add project column — fixed 160 px */}
       <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <div style={{
           padding: '14px 14px 10px',
@@ -355,7 +412,8 @@ export default function KanbanBoard({ tasks, projects, onSelect, onDelete, onTas
           ))}
         </div>
       </div>
-    </div>
+    </div> {/* end grid */}
+    </div> {/* end outer flex */}
   )
 }
 
