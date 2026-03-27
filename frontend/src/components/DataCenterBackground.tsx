@@ -106,7 +106,8 @@ export default function DataCenterBackground() {
     // Fog alpha (0 = invisible, 1 = fully visible)
     const fogAlpha = (wz: number) => {
       const far = RACK_NEAR + (RACK_COUNT - 1) * RACK_SPACING
-      return Math.max(0.04, 1 - Math.pow((wz - RACK_NEAR) / (far * 1.1), 1.3))
+      const ratio = Math.max(0, (wz - RACK_NEAR) / (far * 1.1))
+      return Math.max(0.04, 1 - Math.pow(ratio, 1.3))
     }
 
     // ── Draw background ─────────────────────────────────────────────────────────
@@ -214,7 +215,7 @@ export default function DataCenterBackground() {
         ctx.lineTo(pOB.x, pOB.y)
         ctx.lineTo(pIB.x, pIB.y)
         ctx.closePath()
-        ctx.fillStyle = '#050810'
+        ctx.fillStyle = '#080e1e'
         ctx.fill()
 
         // ── Front face ──────────────────────────────────────────────────────
@@ -231,12 +232,12 @@ export default function DataCenterBackground() {
         // Rack body
         ctx.beginPath()
         ctx.rect(fLeft, fTop, fRight - fLeft, fH)
-        ctx.fillStyle = '#080c1c'
+        ctx.fillStyle = '#0c1228'
         ctx.fill()
 
         // Rack frame highlight
-        ctx.strokeStyle = '#1a2d50'
-        ctx.lineWidth = 1
+        ctx.strokeStyle = '#2a4a80'
+        ctx.lineWidth = 1.5
         ctx.stroke()
 
         // Rack unit dividers (horizontal lines)
@@ -391,7 +392,7 @@ export default function DataCenterBackground() {
     // ── Draw ambient glow at base of racks ───────────────────────────────────────
     const drawFloorGlow = () => {
       for (let i = 0; i < RACK_COUNT; i++) {
-        const wz = rackZs[i] - camZ
+        const wz = rackZs[i]
         if (wz <= 0) continue
         const fa = fogAlpha(wz) * 0.35
         for (const side of ['left', 'right'] as const) {
