@@ -500,7 +500,6 @@ class AgentService:
 
     async def _run_code(self, task, db, settings, llm_client) -> None:
         """Run a code task: clone repo, apply changes, open PR."""
-        # 2. Clone repo
         github_service = GitHubService(
             token=settings.github_token,
             user_name=settings.github_user_name,
@@ -510,79 +509,80 @@ class AgentService:
         self._repo_path = github_service.clone(task.id, task.repo_url, task.base_branch)
         self._log(f"Cloned to {self._repo_path}")
 
-        # 3. Run LLM agent loop
-        self._finished = False
-        initial_message_text = (
-            f"Task: {task.description}\n"
-            f"Repo: {task.repo_url}\n\n"
-            "Start by listing the repository structure."
-        )
-        initial_content = self._build_initial_message(initial_message_text)
+        try:
+            # 3. Run LLM agent loop
+            self._finished = False
+            initial_message_text = (
+                f"Task: {task.description}\n"
+                f"Repo: {task.repo_url}\n\n"
+                "Start by listing the repository structure."
+            )
+            initial_content = self._build_initial_message(initial_message_text)
 
-        await llm_client.run_agent_loop(
-            system=CODE_SYSTEM_PROMPT,
-            initial_message=initial_content,
-            tools=CODE_TOOL_DEFINITIONS,
-            tool_executor=self.tool_executor,
-            log_fn=self._log,
-        )
+            await llm_client.run_agent_loop(
+                system=CODE_SYSTEM_PROMPT,
+                initial_message=initial_content,
+                tools=CODE_TOOL_DEFINITIONS,
+                tool_executor=self.tool_executor,
+                log_fn=self._log,
+            )
 
-        # 4. Check for changes
-        from git import Repo as GitRepo
-        repo = GitRepo(self._repo_path)
-        if not repo.is_dirty(untracked_files=True):
-            self._log("WARNING: No changes detected in repository after agent loop.")
+            # 4. Check for changes
+            from git import Repo as GitRepo
+            repo = GitRepo(self._repo_path)
+            if not repo.is_dirty(untracked_files=True):
+                self._log("WARNING: No changes detected in repository after agent loop.")
 
-        # 5. Create branch, commit, push
-        branch_name = f"baumagent/{task.id[:8]}"
-        self._log(f"Creating branch {branch_name} ...")
-        github_service.create_branch(self._repo_path, branch_name)
+            # 5. Create branch, commit, push
+            branch_name = f"baumagent/{task.id[:8]}"
+            self._log(f"Creating branch {branch_name} ...")
+            github_service.create_branch(self._repo_path, branch_name)
 
-        commit_message = f"baumagent: {task.description[:72]}\n\nTask-ID: {task.id}"
-        self._log("Committing changes ...")
-        commit_sha = github_service.commit_all(self._repo_path, commit_message)
-        self._log(f"Committed: {commit_sha}")
+            commit_message = f"baumagent: {task.description[:72]}\n\nTask-ID: {task.id}"
+            self._log("Committing changes ...")
+            commit_sha = github_service.commit_all(self._repo_path, commit_message)
+            self._log(f"Committed: {commit_sha}")
 
-        self._log("Pushing branch ...")
-        github_service.push(self._repo_path, branch_name)
+            self._log("Pushing branch ...")
+            github_service.push(self._repo_path, branch_name)
 
-        # 6. Ask LLM for PR description
-        self._log("Generating PR description ...")
-        pr_description_prompt = (
-            f"Write a concise GitHub pull request description for the following task.\n\n"
-            f"Task: {task.description}\n"
-            f"Repo: {task.repo_url}\n\n"
-            "Include: what was changed and why. Use Markdown. Be concise."
-        )
-        pr_body = await llm_client.run_agent_loop(
-            system="You are a helpful assistant that writes clear pull request descriptions.",
-            initial_message=pr_description_prompt,
-            tools=[],
-            tool_executor=self.tool_executor,
-            log_fn=lambda _: None,
-        )
+            # 6. Ask LLM for PR description
+            self._log("Generating PR description ...")
+            pr_description_prompt = (
+                f"Write a concise GitHub pull request description for the following task.\n\n"
+                f"Task: {task.description}\n"
+                f"Repo: {task.repo_url}\n\n"
+                "Include: what was changed and why. Use Markdown. Be concise."
+            )
+            pr_body = await llm_client.run_agent_loop(
+                system="You are a helpful assistant that writes clear pull request descriptions.",
+                initial_message=pr_description_prompt,
+                tools=[],
+                tool_executor=self.tool_executor,
+                log_fn=lambda _: None,
+            )
 
-        # 7. Open PR
-        pr_title = task.description[:72]
-        self._log(f"Opening PR: {pr_title}")
-        pr_url, pr_number = github_service.open_pr(
-            repo_url=task.repo_url,
-            branch_name=branch_name,
-            base_branch=task.base_branch,
-            title=pr_title,
-            body=pr_body or task.description,
-        )
-        self._log(f"PR opened: {pr_url}")
+            # 7. Open PR
+            pr_title = task.description[:72]
+            self._log(f"Opening PR: {pr_title}")
+            pr_url, pr_number = github_service.open_pr(
+                repo_url=task.repo_url,
+                branch_name=branch_name,
+                base_branch=task.base_branch,
+                title=pr_title,
+                body=pr_body or task.description,
+            )
+            self._log(f"PR opened: {pr_url}")
 
-        # 8. Update task to complete
-        task.status = TaskStatus.COMPLETE
-        task.branch_name = branch_name
-        task.pr_url = pr_url
-        task.pr_number = pr_number
-        task.commit_sha = commit_sha
-        task.updated_at = datetime.now(timezone.utc)
-        db.commit()
-
-        # 9. Cleanup
-        github_service.cleanup(self._repo_path)
-        self._log("Done.")
+            # 8. Update task to complete
+            task.status = TaskStatus.COMPLETE
+            task.branch_name = branch_name
+            task.pr_url = pr_url
+            task.pr_number = pr_number
+            task.commit_sha = commit_sha
+            task.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            self._log("Done.")
+        finally:
+            # Always clean up the clone directory
+            github_service.cleanup(self._repo_path)

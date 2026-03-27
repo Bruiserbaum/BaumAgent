@@ -50,6 +50,9 @@ class GitHubService:
     def clone(self, task_id: str, repo_url: str, base_branch: str) -> str:
         """Clone the repository and return the local path."""
         local_path = self._repo_local_path(task_id)
+        # Remove stale clone from a previous failed/cancelled run
+        if shutil.os.path.exists(local_path):
+            shutil.rmtree(local_path, ignore_errors=True)
         authed_url = self._inject_token(repo_url)
         repo = Repo.clone_from(authed_url, local_path, branch=base_branch)
         with repo.config_writer() as cw:
