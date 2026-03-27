@@ -9,15 +9,23 @@ def _utcnow(): return datetime.now(timezone.utc)
 
 class User(Base):
     __tablename__ = "users"
-    id          = Column(String, primary_key=True, default=lambda: str(uuid4()))
-    email       = Column(String, unique=True, nullable=False, index=True)
+    id           = Column(String, primary_key=True, default=lambda: str(uuid4()))
+    email        = Column(String, unique=True, nullable=False, index=True)
     display_name = Column(String, nullable=False)
-    created_at  = Column(DateTime, default=_utcnow, nullable=False)
-    settings    = Column(Text, default="{}", nullable=False)  # JSON blob for per-user settings
+    avatar_url   = Column(String, nullable=True)
+    created_at   = Column(DateTime, default=_utcnow, nullable=False)
+    settings     = Column(Text, default="{}", nullable=False)  # JSON blob for per-user settings
+
 
 class UserRead(BaseModel):
     id: str
     email: str
     display_name: str
+    avatar_url: Optional[str] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class UserUpdate(BaseModel):
+    display_name: Optional[str] = None
+    avatar_url: Optional[str] = None

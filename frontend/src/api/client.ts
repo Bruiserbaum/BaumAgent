@@ -6,6 +6,7 @@ export interface User {
   id: string
   email: string
   display_name: string
+  avatar_url: string | null
   created_at: string
 }
 
@@ -131,6 +132,13 @@ export const api = {
 
   getMe: (): Promise<User> =>
     fetch(`${BASE}/me`).then(r => r.json()),
+
+  updateProfile: (data: { display_name?: string; avatar_url?: string }): Promise<User> =>
+    fetch(`${BASE}/me`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }).then(r => r.json()),
 
   getProjects: (): Promise<Project[]> =>
     fetch(`${BASE}/projects`).then(r => r.json()),

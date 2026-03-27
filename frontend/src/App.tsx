@@ -9,6 +9,7 @@ import SettingsPanel from './components/SettingsPanel'
 import DataCenterBackground from './components/DataCenterBackground'
 import ChatPanel from './components/ChatPanel'
 import UserAvatar from './components/UserAvatar'
+import ProfilePanel from './components/ProfilePanel'
 
 const styles = {
   app: {
@@ -100,6 +101,7 @@ export default function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
@@ -142,7 +144,7 @@ export default function App() {
           <div style={styles.headerActions}>
             <button style={styles.settingsBtn} onClick={() => setShowSettings(true)}>⚙ Settings</button>
             <button style={styles.newTaskBtn} onClick={() => setShowForm(true)}>+ New Task</button>
-            <UserAvatar user={currentUser} />
+            <UserAvatar user={currentUser} onClick={currentUser ? () => setShowProfile(true) : undefined} />
           </div>
         </header>
 
@@ -190,6 +192,18 @@ export default function App() {
           <div style={styles.overlay} onClick={() => setShowSettings(false)}>
             <div onClick={e => e.stopPropagation()}>
               <SettingsPanel onClose={() => setShowSettings(false)} />
+            </div>
+          </div>
+        )}
+
+        {showProfile && currentUser && (
+          <div style={styles.overlay} onClick={() => setShowProfile(false)}>
+            <div onClick={e => e.stopPropagation()}>
+              <ProfilePanel
+                user={currentUser}
+                onClose={() => setShowProfile(false)}
+                onUpdated={(updated) => { setCurrentUser(updated); setShowProfile(false) }}
+              />
             </div>
           </div>
         )}

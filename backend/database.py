@@ -46,6 +46,19 @@ def _apply_migrations() -> None:
             if changed:
                 conn.commit()
 
+        if "users" in inspector.get_table_names():
+            existing = {col["name"] for col in inspector.get_columns("users")}
+            migrations = [
+                ("avatar_url", "ALTER TABLE users ADD COLUMN avatar_url VARCHAR"),
+            ]
+            changed = False
+            for col_name, sql in migrations:
+                if col_name not in existing:
+                    conn.execute(text(sql))
+                    changed = True
+            if changed:
+                conn.commit()
+
 
 def init_db() -> None:
     import models.task  # noqa: F401 — ensure model is registered

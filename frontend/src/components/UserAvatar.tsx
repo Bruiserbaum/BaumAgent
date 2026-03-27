@@ -3,6 +3,7 @@ import { User } from '../api/client'
 
 interface Props {
   user: User | null
+  onClick?: () => void
 }
 
 function colorFromEmail(email: string): string {
@@ -12,7 +13,7 @@ function colorFromEmail(email: string): string {
   return `hsl(${hue}, 65%, 45%)`
 }
 
-export default function UserAvatar({ user }: Props) {
+export default function UserAvatar({ user, onClick }: Props) {
   const [showTooltip, setShowTooltip] = useState(false)
 
   if (!user) {
@@ -30,7 +31,12 @@ export default function UserAvatar({ user }: Props) {
     )
   }
 
-  const letter = user.display_name.charAt(0).toUpperCase()
+  const initials = user.display_name
+    .split(' ')
+    .map(w => w.charAt(0))
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || user.display_name.charAt(0).toUpperCase()
   const bg = colorFromEmail(user.email)
 
   return (
@@ -40,24 +46,39 @@ export default function UserAvatar({ user }: Props) {
       onMouseLeave={() => setShowTooltip(false)}
     >
       <div
+        onClick={onClick}
         style={{
           width: '28px',
           height: '28px',
           borderRadius: '50%',
-          backgroundColor: bg,
+          backgroundColor: user.avatar_url ? 'transparent' : bg,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontSize: '13px',
+          fontSize: '11px',
           fontWeight: 700,
           color: '#fff',
-          cursor: 'default',
+          cursor: onClick ? 'pointer' : 'default',
           userSelect: 'none',
           border: '1px solid rgba(255,255,255,0.15)',
           flexShrink: 0,
+          overflow: 'hidden',
         }}
       >
-        {letter}
+        {user.avatar_url ? (
+          <img
+            src={user.avatar_url}
+            alt={user.display_name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            onError={e => {
+              // Fall back to initials if image fails to load
+              const el = e.currentTarget
+              el.style.display = 'none'
+              el.parentElement!.style.backgroundColor = bg
+              el.parentElement!.textContent = initials
+            }}
+          />
+        ) : initials}
       </div>
       {showTooltip && (
         <div
@@ -80,6 +101,11 @@ export default function UserAvatar({ user }: Props) {
             {user.display_name}
           </div>
           <div>{user.email}</div>
+          {onClick && (
+            <div style={{ color: '#475569', marginTop: '4px', fontSize: '11px' }}>
+              Click to edit profile
+            </div>
+          )}
         </div>
       )}
     </div>
