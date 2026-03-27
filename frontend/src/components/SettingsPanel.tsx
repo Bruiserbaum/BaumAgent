@@ -539,15 +539,14 @@ export default function SettingsPanel({ onClose }: Props) {
 
             <div style={styles.checkboxRow}>
               <input
-                style={{ ...styles.checkbox, opacity: 0.4, cursor: 'not-allowed' }}
+                style={styles.checkbox}
                 type="checkbox"
                 id="include_images"
                 checked={fmt.include_images}
-                disabled
                 onChange={e => setFmt('include_images', e.target.checked)}
               />
-              <label style={styles.checkboxLabelMuted} htmlFor="include_images">
-                Include Images <span style={{ fontSize: '11px', color: '#334155' }}>(coming soon)</span>
+              <label style={styles.checkboxLabel} htmlFor="include_images">
+                Include Images
               </label>
             </div>
           </div>

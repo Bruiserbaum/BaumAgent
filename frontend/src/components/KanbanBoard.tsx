@@ -38,12 +38,14 @@ function TaskCard({
   onSelect,
   onDelete,
   onRetry,
+  onCancel,
 }: {
   task: Task
   queuePosition?: number   // 1-based position in global queue; undefined if not in queue
   onSelect: (id: string) => void
   onDelete: (id: string) => void
   onRetry: (id: string) => void
+  onCancel: (id: string) => void
 }) {
   const colors = STATUS_COLORS[task.status] ?? STATUS_COLORS.queued
   const isResearch = task.task_type === 'research'
@@ -114,7 +116,7 @@ function TaskCard({
           </a>
         )}
         <div style={{ flex: 1 }} />
-        {task.status === 'failed' && (
+        {(task.status === 'failed' || task.status === 'complete') && (
           <button
             onClick={e => { e.stopPropagation(); onRetry(task.id) }}
             style={{
@@ -126,7 +128,19 @@ function TaskCard({
             Retry
           </button>
         )}
-        {(task.status === 'queued' || task.status === 'failed') && (
+        {(task.status === 'queued' || task.status === 'running') && (
+          <button
+            onClick={e => { e.stopPropagation(); onCancel(task.id) }}
+            style={{
+              backgroundColor: 'transparent', border: '1px solid #92400e',
+              color: '#fb923c', borderRadius: '4px', padding: '2px 8px',
+              fontSize: '11px', cursor: 'pointer', flexShrink: 0,
+            }}
+          >
+            Cancel
+          </button>
+        )}
+        {task.status === 'failed' && (
           <button
             onClick={e => { e.stopPropagation(); onDelete(task.id) }}
             style={{
@@ -150,6 +164,7 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
   const [newProjectColor, setNewProjectColor] = useState('#3b82f6')
   const [addingProject, setAddingProject] = useState(false)
   const [showColorPicker, setShowColorPicker] = useState(false)
+  const [showQueuePanel, setShowQueuePanel] = useState(false)
 
   const handleDrop = async (e: React.DragEvent, projectId: string | null) => {
     e.preventDefault()
@@ -164,6 +179,11 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
 
   const handleRetry = async (taskId: string) => {
     await api.retryTask(taskId)
+    onTasksChange()
+  }
+
+  const handleCancel = async (taskId: string) => {
+    await api.cancelTask(taskId)
     onTasksChange()
   }
 
@@ -232,9 +252,95 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
               {queuedCount} waiting
             </span>
           )}
-          {runningCount === 0 && queuedCount === 0 && (
-            <span style={{ color: '#334155' }}>idle</span>
-          )}
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={() => setShowQueuePanel(true)}
+            style={{
+              backgroundColor: 'transparent', border: '1px solid #1e3a5f',
+              color: '#475569', borderRadius: '5px', padding: '2px 10px',
+              fontSize: '11px', cursor: 'pointer',
+            }}
+          >
+            View Queue
+          </button>
+        </div>
+      )}
+
+      {/* Queue popup modal */}
+      {showQueuePanel && (
+        <div
+          onClick={() => setShowQueuePanel(false)}
+          style={{
+            position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200,
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              backgroundColor: '#0f172a', border: '1px solid #1e3a5f',
+              borderRadius: '10px', padding: '24px', minWidth: '400px', maxWidth: '560px',
+              maxHeight: '70vh', display: 'flex', flexDirection: 'column',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+              <span style={{ fontSize: '16px', fontWeight: 700, color: '#7dd3fc', flex: 1 }}>Task Queue</span>
+              <button
+                onClick={() => setShowQueuePanel(false)}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '18px' }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              {queueStatus.running.length === 0 && queueStatus.queued.length === 0 ? (
+                <div style={{ color: '#475569', fontSize: '13px', textAlign: 'center', padding: '20px' }}>Queue is idle</div>
+              ) : (
+                <>
+                  {queueStatus.running.map(id => {
+                    const t = tasks.find(x => x.id === id)
+                    return (
+                      <div key={id} style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '9px 12px', marginBottom: '6px',
+                        backgroundColor: '#0c1e3a', border: '1px solid #1e3a5f', borderRadius: '6px',
+                      }}>
+                        <span style={{
+                          width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#60a5fa',
+                          display: 'inline-block', animation: 'pulse 1.5s infinite', flexShrink: 0,
+                        }} />
+                        <span style={{ fontSize: '11px', color: '#60a5fa', fontWeight: 700, minWidth: '52px' }}>RUNNING</span>
+                        <span style={{ fontSize: '13px', color: '#e2e8f0', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {t?.description ?? id}
+                        </span>
+                      </div>
+                    )
+                  })}
+                  {queueStatus.queued.map((id, idx) => {
+                    const t = tasks.find(x => x.id === id)
+                    return (
+                      <div key={id} style={{
+                        display: 'flex', alignItems: 'center', gap: '10px',
+                        padding: '9px 12px', marginBottom: '6px',
+                        backgroundColor: '#16213e', border: '1px solid #1e293b', borderRadius: '6px',
+                      }}>
+                        <span style={{
+                          fontSize: '11px', fontWeight: 700, color: idx === 0 ? '#7dd3fc' : '#475569',
+                          minWidth: '52px',
+                        }}>
+                          {idx === 0 ? '▶ NEXT' : `#${idx + 1}`}
+                        </span>
+                        <span style={{ fontSize: '13px', color: '#94a3b8', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {t?.description ?? id}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -299,7 +405,7 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
                 colTasks.map(task => (
                   <TaskCard key={task.id} task={task}
                     queuePosition={queuePositionMap[task.id]}
-                    onSelect={onSelect} onDelete={onDelete} onRetry={handleRetry} />
+                    onSelect={onSelect} onDelete={onDelete} onRetry={handleRetry} onCancel={handleCancel} />
                 ))
               )}
             </div>

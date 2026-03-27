@@ -1,5 +1,6 @@
 """Document generation for research tasks."""
 import os
+from io import BytesIO
 from pathlib import Path
 
 
@@ -52,13 +53,26 @@ def _render_pdf_section_content(content: str, section_style: str, body_style) ->
     return result
 
 
+def _fetch_image_bytes(url: str) -> BytesIO | None:
+    """Download an image URL and return its bytes, or None on failure."""
+    try:
+        import httpx
+        resp = httpx.get(url, follow_redirects=True, timeout=8)
+        if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image/"):
+            return BytesIO(resp.content)
+    except Exception:
+        pass
+    return None
+
+
 def generate_pdf(title: str, sections: list[dict], sources: list[str],
-                 output_path: str, fmt: dict) -> None:
+                 output_path: str, fmt: dict,
+                 image_urls: list[str] | None = None) -> None:
     """Generate a PDF report using reportlab."""
     from reportlab.lib.pagesizes import letter, A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, HRFlowable, Image as RLImage
     from reportlab.lib.colors import HexColor
 
     pagesize = A4 if fmt.get("page_size") == "a4" else letter
@@ -100,6 +114,29 @@ def generate_pdf(title: str, sections: list[dict], sources: list[str],
         story.extend(_render_pdf_section_content(_safe(section['content']), section_style_val, body_style))
         story.append(Spacer(1, 0.1 * inch))
 
+    # Embed images if requested
+    if image_urls:
+        embedded = 0
+        for url in image_urls:
+            if embedded >= 5:
+                break
+            img_bytes = _fetch_image_bytes(url)
+            if img_bytes is None:
+                continue
+            try:
+                max_width = 4.5 * inch
+                img = RLImage(img_bytes, width=max_width)
+                # Preserve aspect ratio: compute height from reportlab's detected size
+                img_w, img_h = img.imageWidth, img.imageHeight
+                if img_w and img_h:
+                    img.drawHeight = max_width * img_h / img_w
+                    img.drawWidth = max_width
+                story.append(Spacer(1, 0.15 * inch))
+                story.append(img)
+                embedded += 1
+            except Exception:
+                pass
+
     if fmt.get("include_links") and sources:
         story.append(HRFlowable(width="100%", thickness=1, color=HexColor('#bdc3c7')))
         story.append(Spacer(1, 0.1 * inch))
@@ -111,7 +148,8 @@ def generate_pdf(title: str, sections: list[dict], sources: list[str],
 
 
 def generate_docx(title: str, sections: list[dict], sources: list[str],
-                  output_path: str, fmt: dict) -> None:
+                  output_path: str, fmt: dict,
+                  image_urls: list[str] | None = None) -> None:
     """Generate a Word document using python-docx."""
     from docx import Document
     from docx.shared import Pt, RGBColor, Inches, Mm
@@ -171,6 +209,21 @@ def generate_docx(title: str, sections: list[dict], sources: list[str],
                 run = p.add_run(line)
                 run.font.size = body_pt
 
+    # Embed images if requested
+    if image_urls:
+        embedded = 0
+        for url in image_urls:
+            if embedded >= 5:
+                break
+            img_bytes = _fetch_image_bytes(url)
+            if img_bytes is None:
+                continue
+            try:
+                doc.add_picture(img_bytes, width=Inches(4.5))
+                embedded += 1
+            except Exception:
+                pass
+
     if fmt.get("include_links") and sources:
         sources_heading = doc.add_heading('Sources', level=1)
         for run in sources_heading.runs:
@@ -184,7 +237,8 @@ def generate_docx(title: str, sections: list[dict], sources: list[str],
 
 
 def generate_document(title: str, sections: list[dict], sources: list[str],
-                       output_format: str, output_dir: str, fmt: dict) -> str:
+                       output_format: str, output_dir: str, fmt: dict,
+                       image_urls: list[str] | None = None) -> str:
     """Generate document and return full path."""
     os.makedirs(output_dir, exist_ok=True)
     ext = "pdf" if output_format == "pdf" else "docx"
@@ -192,8 +246,8 @@ def generate_document(title: str, sections: list[dict], sources: list[str],
     full_path = os.path.join(output_dir, filename)
 
     if output_format == "pdf":
-        generate_pdf(title, sections, sources, full_path, fmt)
+        generate_pdf(title, sections, sources, full_path, fmt, image_urls=image_urls)
     else:
-        generate_docx(title, sections, sources, full_path, fmt)
+        generate_docx(title, sections, sources, full_path, fmt, image_urls=image_urls)
 
     return full_path

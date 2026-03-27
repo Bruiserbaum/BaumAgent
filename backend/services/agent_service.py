@@ -4,6 +4,7 @@ import os
 import re
 import traceback
 from datetime import datetime, timezone
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from sqlalchemy.orm import Session
@@ -220,6 +221,7 @@ class AgentService:
         self._repo_path: str = ""
         self._finished: bool = False
         self._research_result: dict | None = None
+        self._collected_image_urls: list[str] = []
 
     # ------------------------------------------------------------------
     # Logging
@@ -295,9 +297,24 @@ class AgentService:
     def _tool_read_url(self, url: str) -> str:
         try:
             resp = httpx.get(url, follow_redirects=True, timeout=10)
-            text = resp.text
+            raw_html = resp.text
+
+            # Extract image URLs before stripping HTML
+            img_srcs = re.findall(r'<img[^>]+src=["\']([^"\']+)["\']', raw_html, re.IGNORECASE)
+            for src in img_srcs:
+                if src.startswith('data:'):
+                    continue
+                # Skip tiny icons / svgs
+                if src.lower().endswith('.svg') or 'icon' in src.lower() or 'logo' in src.lower():
+                    continue
+                abs_url = urljoin(url, src)
+                if abs_url not in self._collected_image_urls:
+                    self._collected_image_urls.append(abs_url)
+                if len(self._collected_image_urls) >= 10:
+                    break
+
             # Strip HTML tags
-            text = re.sub(r'<[^>]+>', '', text)
+            text = re.sub(r'<[^>]+>', '', raw_html)
             # Collapse whitespace
             text = re.sub(r'\s+', ' ', text).strip()
             return text[:3000]
@@ -411,6 +428,7 @@ class AgentService:
 
         self._finished = False
         self._research_result = None
+        self._collected_image_urls = []
 
         await llm_client.run_agent_loop(
             system=RESEARCH_SYSTEM_PROMPT,
@@ -443,6 +461,7 @@ class AgentService:
                     output_format=output_format,
                     output_dir=output_dir,
                     fmt=_fmt,
+                    image_urls=self._collected_image_urls if _fmt.get("include_images") else [],
                 )
                 task.output_file = output_file
                 db.commit()

@@ -129,6 +129,33 @@ def retry_task(
     return task
 
 
+@router.post("/{task_id}/cancel", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> None:
+    task = db.query(Task).filter(Task.id == task_id, Task.user_id == current_user.id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if task.status not in (TaskStatus.QUEUED, TaskStatus.RUNNING):
+        raise HTTPException(status_code=409, detail="Only queued or running tasks can be cancelled")
+
+    # Best-effort: cancel the RQ job
+    if task.rq_job_id:
+        try:
+            from rq.job import Job
+            redis = Redis.from_url(get_settings().redis_url)
+            job = Job.fetch(task.rq_job_id, connection=redis)
+            job.cancel()
+        except Exception:
+            pass
+
+    task.status = TaskStatus.FAILED
+    task.error_message = "Cancelled by user"
+    db.commit()
+
+
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(
     task_id: str,
