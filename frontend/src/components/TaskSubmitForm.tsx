@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, FormEvent, DragEvent, ClipboardEvent } from 'react'
-import { api, ModelsResponse, Project } from '../api/client'
+import { api, ModelsResponse, Project, GithubRepo } from '../api/client'
 
 interface Props {
   onClose: () => void
@@ -106,6 +106,13 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
   const [error, setError] = useState('')
   const [projectId, setProjectId] = useState<string>('')
 
+  // Repo dropdown state
+  const [repos, setRepos] = useState<GithubRepo[]>([])
+  const [repoSearch, setRepoSearch] = useState('')
+  const [repoDropdownOpen, setRepoDropdownOpen] = useState(false)
+  const [selectedRepo, setSelectedRepo] = useState<GithubRepo | null>(null)
+  const repoDropdownRef = useRef<HTMLDivElement>(null)
+
   // Image state
   const [images, setImages] = useState<File[]>([])
   const [imagePreviews, setImagePreviews] = useState<string[]>([])
@@ -119,9 +126,34 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
 
   useEffect(() => {
     api.getModels().then(setModels).catch(() => {})
+    api.getRepos().then(setRepos).catch(() => {})
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     setSpeechSupported(!!SR)
   }, [])
+
+  // Close repo dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (repoDropdownRef.current && !repoDropdownRef.current.contains(e.target as Node)) {
+        setRepoDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filteredRepos = repos.filter(r =>
+    r.full_name.toLowerCase().includes(repoSearch.toLowerCase()) ||
+    r.description.toLowerCase().includes(repoSearch.toLowerCase())
+  )
+
+  const selectRepo = (repo: GithubRepo) => {
+    setSelectedRepo(repo)
+    setRepoUrl(repo.html_url)
+    setBaseBranch(repo.default_branch)
+    setRepoDropdownOpen(false)
+    setRepoSearch('')
+  }
 
   // When backend changes, default to first available model
   useEffect(() => {
@@ -407,14 +439,98 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
         {/* Code-only fields */}
         {taskType === 'code' && (
           <>
-            <label style={label}>Repository URL *</label>
-            <input
-              style={input}
-              type="url"
-              value={repoUrl}
-              onChange={e => setRepoUrl(e.target.value)}
-              placeholder="https://github.com/owner/repo"
-            />
+            <label style={label}>Repository *</label>
+            {repos.length > 0 ? (
+              <div ref={repoDropdownRef} style={{ position: 'relative', marginBottom: '14px' }}>
+                {/* Trigger button */}
+                <div
+                  onClick={() => setRepoDropdownOpen(v => !v)}
+                  style={{
+                    ...input,
+                    marginBottom: 0,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    userSelect: 'none',
+                  }}
+                >
+                  <span style={{ color: selectedRepo ? '#e2e8f0' : '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {selectedRepo ? selectedRepo.full_name : 'Select a repository…'}
+                  </span>
+                  <span style={{ color: '#475569', fontSize: '11px', flexShrink: 0, marginLeft: '8px' }}>▾</span>
+                </div>
+
+                {/* Dropdown panel */}
+                {repoDropdownOpen && (
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+                    backgroundColor: '#0f172a', border: '1px solid #334155', borderRadius: '6px',
+                    zIndex: 50, maxHeight: '220px', display: 'flex', flexDirection: 'column',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                  }}>
+                    <input
+                      autoFocus
+                      value={repoSearch}
+                      onChange={e => setRepoSearch(e.target.value)}
+                      placeholder="Filter repositories…"
+                      style={{
+                        ...input,
+                        margin: '6px', width: 'calc(100% - 12px)', boxSizing: 'border-box',
+                        marginBottom: '0', borderRadius: '4px', fontSize: '13px',
+                      }}
+                    />
+                    <div style={{ overflowY: 'auto', flex: 1 }}>
+                      {filteredRepos.length === 0 ? (
+                        <div style={{ color: '#475569', fontSize: '13px', padding: '10px 12px' }}>No matches</div>
+                      ) : filteredRepos.map(r => (
+                        <div
+                          key={r.full_name}
+                          onClick={() => selectRepo(r)}
+                          style={{
+                            padding: '8px 12px', cursor: 'pointer',
+                            backgroundColor: selectedRepo?.full_name === r.full_name ? '#0f3460' : 'transparent',
+                            borderBottom: '1px solid #1e293b',
+                          }}
+                          onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1e293b')}
+                          onMouseLeave={e => (e.currentTarget.style.backgroundColor = selectedRepo?.full_name === r.full_name ? '#0f3460' : 'transparent')}
+                        >
+                          <div style={{ fontSize: '13px', color: '#e2e8f0', fontWeight: 600 }}>{r.full_name}</div>
+                          {r.description && (
+                            <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.description}</div>
+                          )}
+                          <div style={{ fontSize: '10px', color: '#334155', marginTop: '2px' }}>
+                            {r.private ? '🔒 private' : '🌐 public'} · {r.default_branch}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <input
+                style={input}
+                type="url"
+                value={repoUrl}
+                onChange={e => setRepoUrl(e.target.value)}
+                placeholder="https://github.com/owner/repo"
+              />
+            )}
+
+            {/* Manual URL override (shown when repo selected, or no repos loaded) */}
+            {repos.length > 0 && (
+              <>
+                <label style={{ ...label, color: '#475569', fontSize: '11px' }}>Override URL (optional)</label>
+                <input
+                  style={{ ...input, fontSize: '12px', color: '#64748b' }}
+                  type="url"
+                  value={repoUrl}
+                  onChange={e => { setRepoUrl(e.target.value); setSelectedRepo(null) }}
+                  placeholder="Or paste a URL manually"
+                />
+              </>
+            )}
 
             <label style={label}>Base Branch</label>
             <input

@@ -65,6 +65,15 @@ export interface QueueStatus {
   running: string[]  // task IDs currently being executed
 }
 
+export interface GithubRepo {
+  name: string
+  full_name: string
+  html_url: string
+  default_branch: string
+  private: boolean
+  description: string
+}
+
 export interface DocFormatSettings {
   title_font_size: number
   heading_font_size: number
@@ -177,6 +186,9 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ project_id: projectId }),
     }).then(r => r.json()),
+
+  getRepos: (): Promise<GithubRepo[]> =>
+    fetch(`${BASE}/repos`).then(r => r.json()),
 
   testSMB: (): Promise<{ ok: boolean; message: string }> =>
     fetch(`${BASE}/settings/smb/test`, { method: 'POST' }).then(r => r.json()),
