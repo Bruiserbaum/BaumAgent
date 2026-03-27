@@ -150,12 +150,17 @@ async def get_models() -> dict[str, list[str]]:
                     headers={"Authorization": f"Bearer {cfg.openai_api_key}"},
                 )
                 if resp.status_code == 200:
-                    all_ids: list[str] = [m["id"] for m in resp.json().get("data", [])]
-                    # Keep only chat-capable models, sorted alphabetically
+                    data = resp.json().get("data", [])
+                    # Only keep first-party OpenAI chat models
                     openai_models = sorted(
-                        m for m in all_ids
-                        if m.startswith(_OPENAI_CHAT_PREFIXES)
-                        and not any(x in m for x in ("-realtime-", "-audio-", "-embedding", "-search-", "-instruct", "-deep-research"))
+                        m["id"] for m in data
+                        if m.get("owned_by") in ("openai", "openai-internal", "system")
+                        and m["id"].startswith(_OPENAI_CHAT_PREFIXES)
+                        and not any(x in m["id"] for x in (
+                            "-realtime-", "-audio-", "-embedding",
+                            "-search-", "-instruct", "-deep-research",
+                            "-transcribe", "-tts",
+                        ))
                     )
         except Exception:
             pass
