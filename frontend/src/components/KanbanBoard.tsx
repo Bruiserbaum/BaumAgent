@@ -412,8 +412,8 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
           ))}
         </div>
       </div>
-    </div> {/* end grid */}
-    </div> {/* end outer flex */}
+    </div>
+    </div>
   )
 }
 
