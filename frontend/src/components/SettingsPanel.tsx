@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api, PortalSettings, DocFormatSettings, SMBSettings } from '../api/client'
+import { api, PortalSettings, DocFormatSettings, SMBSettings, ModelsResponse } from '../api/client'
 
 interface Props {
   onClose: () => void
@@ -220,15 +220,17 @@ const styles = {
 
 export default function SettingsPanel({ onClose }: Props) {
   const [settings, setSettings] = useState<PortalSettings>(DEFAULT_SETTINGS)
+  const [models, setModels] = useState<ModelsResponse>({ anthropic: [], openai: [], ollama: [] })
   const [loading, setLoading] = useState(true)
   const [saved, setSaved] = useState(false)
   const [smbTestResult, setSmbTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [smbTesting, setSmbTesting] = useState(false)
 
   useEffect(() => {
-    api.getSettings()
-      .then(data => {
+    Promise.all([api.getSettings(), api.getModels()])
+      .then(([data, mods]) => {
         setSettings(data)
+        setModels(mods)
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -289,7 +291,12 @@ export default function SettingsPanel({ onClose }: Props) {
               <select
                 style={styles.select}
                 value={settings.default_llm_backend}
-                onChange={e => setTop('default_llm_backend', e.target.value)}
+                onChange={e => {
+                  setTop('default_llm_backend', e.target.value)
+                  // Pick first model in new backend's list, or clear
+                  const firstModel = (models[e.target.value as keyof ModelsResponse] ?? [])[0] ?? ''
+                  setTop('default_llm_model', firstModel)
+                }}
               >
                 <option value="anthropic">Anthropic</option>
                 <option value="openai">OpenAI</option>
@@ -299,13 +306,25 @@ export default function SettingsPanel({ onClose }: Props) {
 
             <div style={styles.fieldRow}>
               <span style={styles.label}>Default Model</span>
-              <input
-                style={styles.input}
-                type="text"
-                value={settings.default_llm_model}
-                onChange={e => setTop('default_llm_model', e.target.value)}
-                placeholder="e.g. claude-sonnet-4-6"
-              />
+              {settings.default_llm_backend === 'ollama' && (models.ollama ?? []).length === 0 ? (
+                <input
+                  style={styles.input}
+                  type="text"
+                  value={settings.default_llm_model}
+                  onChange={e => setTop('default_llm_model', e.target.value)}
+                  placeholder="e.g. llama3.2, mistral, gemma3"
+                />
+              ) : (
+                <select
+                  style={styles.select}
+                  value={settings.default_llm_model}
+                  onChange={e => setTop('default_llm_model', e.target.value)}
+                >
+                  {(models[settings.default_llm_backend as keyof ModelsResponse] ?? []).map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
 
@@ -316,32 +335,60 @@ export default function SettingsPanel({ onClose }: Props) {
               Override the default LLM per context. Leave blank to use the global default above.
             </p>
 
-            {(['chat', 'research', 'code'] as const).map(ctx => (
-              <div key={ctx} style={{ marginBottom: '16px' }}>
-                <div style={{ color: '#64748b', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                  {ctx === 'chat' ? 'AI Chat' : ctx === 'research' ? 'Research Tasks' : 'Code Tasks'}
+            {(['chat', 'research', 'code'] as const).map(ctx => {
+              const ctxBackend = (settings as any)[`${ctx}_backend`] as string
+              const ctxModel = (settings as any)[`${ctx}_model`] as string
+              // Resolve effective backend for model list: ctx override or global default
+              const effectiveBackend = ctxBackend || settings.default_llm_backend
+              const modelList: string[] = models[effectiveBackend as keyof ModelsResponse] ?? []
+              const isOllamaFallback = effectiveBackend === 'ollama' && modelList.length === 0
+
+              return (
+                <div key={ctx} style={{ marginBottom: '16px' }}>
+                  <div style={{ color: '#64748b', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
+                    {ctx === 'chat' ? 'AI Chat' : ctx === 'research' ? 'Research Tasks' : 'Code Tasks'}
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <select
+                      style={{ ...styles.select, flex: '0 0 130px' }}
+                      value={ctxBackend}
+                      onChange={e => {
+                        setTop(`${ctx}_backend` as any, e.target.value)
+                        // Reset model when backend changes so stale value is cleared
+                        setTop(`${ctx}_model` as any, '')
+                      }}
+                    >
+                      <option value="">— global default —</option>
+                      <option value="anthropic">Anthropic</option>
+                      <option value="openai">OpenAI</option>
+                      <option value="ollama">Ollama</option>
+                    </select>
+
+                    {isOllamaFallback ? (
+                      <input
+                        style={styles.input}
+                        type="text"
+                        placeholder="model name (blank = global default)"
+                        value={ctxModel}
+                        onChange={e => setTop(`${ctx}_model` as any, e.target.value)}
+                      />
+                    ) : (
+                      <select
+                        style={styles.select}
+                        value={ctxModel}
+                        onChange={e => setTop(`${ctx}_model` as any, e.target.value)}
+                        disabled={modelList.length === 0}
+                      >
+                        <option value="">— global default —</option>
+                        {modelList.map(m => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <select
-                    style={{ ...styles.select, flex: '0 0 130px' }}
-                    value={(settings as any)[`${ctx}_backend`]}
-                    onChange={e => setTop(`${ctx}_backend` as any, e.target.value)}
-                  >
-                    <option value="">— global default —</option>
-                    <option value="anthropic">Anthropic</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="ollama">Ollama</option>
-                  </select>
-                  <input
-                    style={styles.input}
-                    type="text"
-                    placeholder="model (blank = global default)"
-                    value={(settings as any)[`${ctx}_model`]}
-                    onChange={e => setTop(`${ctx}_model` as any, e.target.value)}
-                  />
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 
           {/* Document Formatting */}
