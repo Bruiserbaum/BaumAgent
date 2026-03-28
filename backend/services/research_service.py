@@ -33,7 +33,7 @@ def _build_summary_section(sections: list[dict], summary_as_bullets: bool) -> di
         if snippet:
             bullets.append(snippet)
     if summary_as_bullets:
-        summary_content = '\n'.join(f"• {b}" for b in bullets)
+        summary_content = '\n'.join(f"- {b}" for b in bullets)
     else:
         summary_content = '\n'.join(bullets)
     return {"heading": "Summary", "content": summary_content}
