@@ -95,9 +95,13 @@ const styles = {
     inset: 0,
     backgroundColor: 'rgba(0,0,0,0.6)',
     display: 'flex',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
-    zIndex: 100,
+    zIndex: 300,
+    overflowY: 'auto',
+    paddingTop: '60px',
+    paddingBottom: '20px',
+    boxSizing: 'border-box' as const,
   } as React.CSSProperties,
 }
 

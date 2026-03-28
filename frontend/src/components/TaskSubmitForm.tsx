@@ -15,8 +15,9 @@ const card: React.CSSProperties = {
   width: '560px',
   maxWidth: '95vw',
   boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
-  maxHeight: '90vh',
+  maxHeight: '85dvh',
   overflowY: 'auto',
+  boxSizing: 'border-box' as const,
 }
 
 const label: React.CSSProperties = {
