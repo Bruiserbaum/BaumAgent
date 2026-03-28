@@ -151,31 +151,51 @@ export default function App() {
 
   const selectedTask = tasks.find(t => t.id === selectedTaskId) ?? null
 
+  const MOBILE_HEADER_H = 52 // px — matches the fixed mobile header height
+
   return (
-    <div style={styles.app}>
+    <div style={{
+      ...styles.app,
+      // On mobile let content scroll naturally; desktop keeps overflow:hidden
+      overflow: isMobile ? 'visible' : 'hidden',
+      height: isMobile ? 'auto' : '100vh',
+      minHeight: isMobile ? '100dvh' : undefined,
+    }}>
         <DataCenterBackground />
 
-        {/* Header */}
-        <header style={styles.header}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-            <h1 style={{ ...styles.title, fontSize: isMobile ? '16px' : '20px' }}>BaumAgent</h1>
+        {/* Header — fixed on mobile so it's always visible above browser chrome */}
+        <header style={{
+          ...styles.header,
+          ...(isMobile ? {
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            zIndex: 200,
+            padding: '8px 14px',
+            height: `${MOBILE_HEADER_H}px`,
+            boxSizing: 'border-box',
+          } : {}),
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <h1 style={{ ...styles.title, fontSize: isMobile ? '16px' : '20px', margin: 0 }}>BaumAgent</h1>
             {!isMobile && <span style={{ color: '#475569', fontSize: '11px' }}>v{__APP_VERSION__}</span>}
           </div>
           <div style={styles.headerActions}>
             {isMobile ? (
               <>
                 <button
-                  style={{ ...styles.settingsBtn, padding: '7px 10px' }}
+                  style={{ ...styles.settingsBtn, padding: '6px 10px' }}
                   onClick={() => setShowSettings(true)}
                   title="Settings"
                 >⚙</button>
                 <button
-                  style={{ ...styles.newTaskBtn, padding: '7px 10px' }}
+                  style={{ ...styles.newTaskBtn, padding: '6px 10px' }}
                   onClick={() => setShowForm(true)}
                   title="New Task"
                 >+</button>
                 <button
-                  style={{ ...styles.settingsBtn, padding: '7px 10px', color: showChat ? '#7dd3fc' : '#94a3b8', border: showChat ? '1px solid #7dd3fc' : '1px solid #1e4d8c' }}
+                  style={{ ...styles.settingsBtn, padding: '6px 10px', color: showChat ? '#7dd3fc' : '#94a3b8', border: showChat ? '1px solid #7dd3fc' : '1px solid #1e4d8c' }}
                   onClick={() => setShowChat(v => !v)}
                   title="AI Chat"
                 >💬</button>
@@ -191,15 +211,13 @@ export default function App() {
           </div>
         </header>
 
-        {/* Body: kanban/detail + chat (desktop side-by-side, mobile stacked) */}
-        <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden', position: 'relative', zIndex: 1 }}>
-          {/* Main content */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+        {/* Body */}
+        {isMobile ? (
+          // Mobile: normal document flow, scrolls naturally, padded below fixed header
+          <div style={{ paddingTop: `${MOBILE_HEADER_H}px`, position: 'relative', zIndex: 1, minHeight: `calc(100dvh - ${MOBILE_HEADER_H}px)` }}>
             {selectedTask ? (
-              <div style={{ padding: isMobile ? '12px' : '20px', overflowY: 'auto', flex: 1 }}>
-                <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>
-                  &larr; Back
-                </button>
+              <div style={{ padding: '12px', overflowY: 'auto' }}>
+                <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>&larr; Back</button>
                 <TaskDetail task={selectedTask} />
               </div>
             ) : (
@@ -215,10 +233,31 @@ export default function App() {
               />
             )}
           </div>
-
-          {/* Desktop: chat always visible as right sidebar */}
-          {!isMobile && <ChatPanel messages={chatMessages} setMessages={setChatMessages} />}
-        </div>
+        ) : (
+          // Desktop: flex side-by-side, fixed height
+          <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden', position: 'relative', zIndex: 1 }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+              {selectedTask ? (
+                <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+                  <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>&larr; Back to Tasks</button>
+                  <TaskDetail task={selectedTask} />
+                </div>
+              ) : (
+                <KanbanBoard
+                  tasks={tasks}
+                  projects={projects}
+                  queueStatus={queueStatus}
+                  onSelect={setSelectedTaskId}
+                  onDelete={handleDelete}
+                  onTasksChange={loadTasks}
+                  onProjectsChange={loadProjects}
+                  isMobile={false}
+                />
+              )}
+            </div>
+            <ChatPanel messages={chatMessages} setMessages={setChatMessages} />
+          </div>
+        )}
 
         {/* Mobile: chat as slide-up bottom drawer */}
         {isMobile && showChat && (

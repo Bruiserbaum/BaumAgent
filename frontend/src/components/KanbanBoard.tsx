@@ -227,7 +227,10 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
   const colCount = columns.length // project data columns (management column is fixed-width)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: isMobile ? 'auto' : 'hidden' }}>
+    <div style={isMobile
+      ? { display: 'flex', flexDirection: 'column' }
+      : { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }
+    }>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }`}</style>
 
       {/* Queue status bar */}
@@ -417,9 +420,6 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
     <div style={isMobile ? {
       display: 'flex',
       flexDirection: 'column',
-      flex: 1,
-      overflowY: 'auto',
-      overflowX: 'hidden',
     } : {
       display: 'grid',
       gridTemplateColumns: `repeat(${colCount}, 1fr) 160px`,
