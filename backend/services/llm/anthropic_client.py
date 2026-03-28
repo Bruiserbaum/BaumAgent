@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Union
 import anthropic
 
@@ -69,13 +70,23 @@ class AnthropicClient:
         nudge_count = 0
 
         for round_num in range(max_rounds):
-            response = await self._client.messages.create(
-                model=self._model,
-                max_tokens=16000,
-                system=system,
-                tools=anthropic_tools,
-                messages=messages,
-            )
+            # Retry on 429 rate-limit with exponential backoff (up to 4 attempts)
+            for attempt in range(4):
+                try:
+                    response = await self._client.messages.create(
+                        model=self._model,
+                        max_tokens=16000,
+                        system=system,
+                        tools=anthropic_tools,
+                        messages=messages,
+                    )
+                    break
+                except anthropic.RateLimitError as exc:
+                    if attempt == 3:
+                        raise
+                    wait = 15 * (2 ** attempt)  # 15s, 30s, 60s
+                    log_fn(f"[agent] Rate limited (429) — retrying in {wait}s (attempt {attempt + 1}/4)")
+                    await asyncio.sleep(wait)
 
             stop_reason = response.stop_reason
 

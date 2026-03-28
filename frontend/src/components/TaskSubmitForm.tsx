@@ -131,6 +131,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
   const [speechSupported, setSpeechSupported] = useState(false)
   const recognitionRef = useRef<any>(null)
   const formRef = useRef<HTMLFormElement>(null)
+  const prevTaskTypeRef = useRef<string>(taskType)
 
   useEffect(() => {
     api.getRepos().then(setRepos).catch(() => {})
@@ -172,9 +173,14 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
     setRepoSearch('')
   }
 
-  // When task type changes, switch to per-context defaults
+  // When the user switches tabs, apply per-context defaults.
+  // Intentionally skipped on initial portalSettings load to avoid overwriting
+  // a model the user has already selected while settings were fetching.
   useEffect(() => {
     if (!portalSettings) return
+    if (prevTaskTypeRef.current === taskType) return  // portalSettings changed, tab didn't — skip
+    prevTaskTypeRef.current = taskType
+
     const s = portalSettings
     let b: string, mdl: string
     if (taskType === 'research') {
