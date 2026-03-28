@@ -11,6 +11,8 @@ interface Message {
 interface Props {
   messages: Message[]
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>
+  isMobile?: boolean
+  onClose?: () => void
 }
 
 declare global {
@@ -22,7 +24,7 @@ declare global {
 
 const DOC_ACCEPT = '.pdf,.docx,.xlsx,.xls,.csv'
 
-export default function ChatPanel({ messages, setMessages }: Props) {
+export default function ChatPanel({ messages, setMessages, isMobile, onClose }: Props) {
   const [input, setInput] = useState('')
   const [attachedImages, setAttachedImages] = useState<string[]>([])
   const [attachedDocs, setAttachedDocs] = useState<DocumentAttachment[]>([])
@@ -194,14 +196,16 @@ export default function ChatPanel({ messages, setMessages }: Props) {
   return (
     <div
       style={{
-        width: 'clamp(320px, 25vw, 520px)',
+        width: isMobile ? '100%' : 'clamp(320px, 25vw, 520px)',
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
-        borderLeft: '1px solid rgba(20,50,110,0.7)',
-        backgroundColor: 'rgba(8,12,28,0.7)',
+        borderLeft: isMobile ? 'none' : '1px solid rgba(20,50,110,0.7)',
+        borderTop: isMobile ? '1px solid rgba(20,50,110,0.7)' : 'none',
+        backgroundColor: 'rgba(8,12,28,0.97)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
+        height: isMobile ? '100%' : undefined,
       }}
     >
       {/* Header */}
@@ -212,8 +216,24 @@ export default function ChatPanel({ messages, setMessages }: Props) {
           flexShrink: 0,
         }}
       >
-        <div style={{ fontSize: '13px', fontWeight: 700, color: '#7dd3fc', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          AI Chat
+        {isMobile && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '8px' }}>
+            <div style={{ width: '36px', height: '4px', borderRadius: '2px', backgroundColor: '#334155' }} />
+          </div>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: '#7dd3fc', textTransform: 'uppercase', letterSpacing: '0.06em', flex: 1 }}>
+            AI Chat
+          </div>
+          {isMobile && onClose && (
+            <button
+              onClick={onClose}
+              style={{
+                background: 'none', border: 'none', color: '#475569',
+                cursor: 'pointer', fontSize: '18px', padding: '0 4px', lineHeight: 1,
+              }}
+            >✕</button>
+          )}
         </div>
         <select style={selectStyle} value={backend} onChange={e => setBackend(e.target.value)}>
           <option value="anthropic">Anthropic</option>

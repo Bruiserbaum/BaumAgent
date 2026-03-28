@@ -15,6 +15,7 @@ interface Props {
   onDelete: (id: string) => void
   onTasksChange: () => void
   onProjectsChange: () => void
+  isMobile?: boolean
 }
 
 function timeAgo(iso: string): string {
@@ -160,7 +161,7 @@ function TaskCard({
   )
 }
 
-export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, onDelete, onTasksChange, onProjectsChange }: Props) {
+export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, onDelete, onTasksChange, onProjectsChange, isMobile }: Props) {
   const [dragOverColId, setDragOverColId] = useState<string | null>(null)
   const [showAddProject, setShowAddProject] = useState(false)
   const [newProjectName, setNewProjectName] = useState('')
@@ -226,7 +227,7 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
   const colCount = columns.length // project data columns (management column is fixed-width)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0, overflow: isMobile ? 'auto' : 'hidden' }}>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }`}</style>
 
       {/* Queue status bar */}
@@ -266,6 +267,72 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
           >
             View Queue
           </button>
+        </div>
+      )}
+
+      {/* Mobile: project filter strip */}
+      {isMobile && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0,
+          padding: '8px 12px', overflowX: 'auto',
+          backgroundColor: 'rgba(8,12,28,0.7)',
+          borderBottom: '1px solid rgba(20,50,110,0.5)',
+        }}>
+          <span style={{ fontSize: '11px', color: '#475569', fontWeight: 700, flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Projects</span>
+          {projects.map(p => (
+            <span key={p.id} style={{
+              flexShrink: 0, fontSize: '11px', fontWeight: 600, padding: '3px 10px',
+              borderRadius: '12px', backgroundColor: p.color + '22', border: `1px solid ${p.color}66`,
+              color: p.color,
+            }}>{p.name}</span>
+          ))}
+          <button
+            onClick={() => setShowAddProject(true)}
+            style={{
+              flexShrink: 0, background: 'none', border: '1px dashed #334155',
+              borderRadius: '12px', color: '#475569', fontSize: '11px',
+              padding: '3px 10px', cursor: 'pointer',
+            }}
+          >+ Add</button>
+          {showAddProject && (
+            <div style={{
+              position: 'fixed', inset: 0, zIndex: 200, backgroundColor: 'rgba(0,0,0,0.6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }} onClick={() => setShowAddProject(false)}>
+              <div style={{
+                backgroundColor: '#16213e', border: '1px solid #1e3a5f',
+                borderRadius: '10px', padding: '20px', width: '280px',
+              }} onClick={e => e.stopPropagation()}>
+                <div style={{ fontSize: '14px', fontWeight: 700, color: '#7dd3fc', marginBottom: '12px' }}>New Project</div>
+                <input
+                  autoFocus
+                  value={newProjectName}
+                  onChange={e => setNewProjectName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleAddProject()
+                    if (e.key === 'Escape') { setShowAddProject(false); setNewProjectName('') }
+                  }}
+                  placeholder="Project name"
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    backgroundColor: '#0f172a', border: '1px solid #334155',
+                    borderRadius: '5px', color: '#e2e8f0',
+                    padding: '8px 10px', fontSize: '14px', marginBottom: '12px', outline: 'none',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={handleAddProject} disabled={addingProject} style={{
+                    flex: 1, backgroundColor: '#0f3460', color: '#7dd3fc', border: '1px solid #1e4d8c',
+                    borderRadius: '6px', padding: '8px', cursor: 'pointer', fontWeight: 600,
+                  }}>{addingProject ? '...' : 'Create'}</button>
+                  <button onClick={() => { setShowAddProject(false); setNewProjectName('') }} style={{
+                    flex: 1, background: 'none', color: '#64748b', border: '1px solid #334155',
+                    borderRadius: '6px', padding: '8px', cursor: 'pointer',
+                  }}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -347,7 +414,13 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
         </div>
       )}
 
-    <div style={{
+    <div style={isMobile ? {
+      display: 'flex',
+      flexDirection: 'column',
+      flex: 1,
+      overflowY: 'auto',
+      overflowX: 'hidden',
+    } : {
       display: 'grid',
       gridTemplateColumns: `repeat(${colCount}, 1fr) 160px`,
       flex: 1,
@@ -368,10 +441,11 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
             onDrop={e => handleDrop(e, col.id)}
             style={{
               display: 'flex', flexDirection: 'column',
-              borderRight: '1px solid rgba(20,50,110,0.7)',
+              borderRight: isMobile ? 'none' : '1px solid rgba(20,50,110,0.7)',
+              borderBottom: isMobile ? '1px solid rgba(20,50,110,0.5)' : 'none',
               backgroundColor: isDragTarget ? 'rgba(20,50,110,0.15)' : 'transparent',
               transition: 'background 0.15s',
-              minHeight: 0, overflow: 'hidden',
+              ...(isMobile ? {} : { minHeight: 0, overflow: 'hidden' }),
             }}
           >
             <div style={{
@@ -395,7 +469,7 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
               </span>
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: '10px' }}>
+            <div style={{ flex: 1, overflowY: isMobile ? 'visible' : 'auto', padding: '10px' }}>
               {colTasks.length === 0 ? (
                 <div style={{
                   textAlign: 'center', color: '#334155', fontSize: '12px',
@@ -416,8 +490,8 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
         )
       })}
 
-      {/* Add project column — fixed 160 px */}
-      <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      {/* Add project column — hidden on mobile (accessible via toolbar button) */}
+      {!isMobile && <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
         <div style={{
           padding: '14px 14px 10px',
           borderBottom: '1px solid rgba(20,50,110,0.6)',
@@ -520,7 +594,7 @@ export default function KanbanBoard({ tasks, projects, queueStatus, onSelect, on
             <ProjectRow key={p.id} project={p} onProjectsChange={onProjectsChange} />
           ))}
         </div>
-      </div>
+      </div>}
     </div>
     </div>
   )

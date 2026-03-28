@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 declare const __APP_VERSION__: string
 import { api, Task, User, Project, QueueStatus } from './api/client'
@@ -10,6 +10,16 @@ import DataCenterBackground from './components/DataCenterBackground'
 import ChatPanel from './components/ChatPanel'
 import UserAvatar from './components/UserAvatar'
 import ProfilePanel from './components/ProfilePanel'
+
+function useIsMobile(breakpoint = 768): boolean {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= breakpoint)
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= breakpoint)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [breakpoint])
+  return isMobile
+}
 
 const styles = {
   app: {
@@ -99,12 +109,14 @@ interface ChatMessage {
 }
 
 export default function App() {
+  const isMobile = useIsMobile()
   const [tasks, setTasks] = useState<Task[]>([])
   const [queueStatus, setQueueStatus] = useState<QueueStatus>({ queued: [], running: [] })
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
+  const [showChat, setShowChat] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
@@ -142,27 +154,51 @@ export default function App() {
   return (
     <div style={styles.app}>
         <DataCenterBackground />
+
         {/* Header */}
         <header style={styles.header}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-            <h1 style={styles.title}>BaumAgent</h1>
-            <span style={{ color: '#475569', fontSize: '11px' }}>v{__APP_VERSION__}</span>
+            <h1 style={{ ...styles.title, fontSize: isMobile ? '16px' : '20px' }}>BaumAgent</h1>
+            {!isMobile && <span style={{ color: '#475569', fontSize: '11px' }}>v{__APP_VERSION__}</span>}
           </div>
           <div style={styles.headerActions}>
-            <button style={styles.settingsBtn} onClick={() => setShowSettings(true)}>⚙ Settings</button>
-            <button style={styles.newTaskBtn} onClick={() => setShowForm(true)}>+ New Task</button>
-            <UserAvatar user={currentUser} onClick={currentUser ? () => setShowProfile(true) : undefined} />
+            {isMobile ? (
+              <>
+                <button
+                  style={{ ...styles.settingsBtn, padding: '7px 10px' }}
+                  onClick={() => setShowSettings(true)}
+                  title="Settings"
+                >⚙</button>
+                <button
+                  style={{ ...styles.newTaskBtn, padding: '7px 10px' }}
+                  onClick={() => setShowForm(true)}
+                  title="New Task"
+                >+</button>
+                <button
+                  style={{ ...styles.settingsBtn, padding: '7px 10px', color: showChat ? '#7dd3fc' : '#94a3b8', border: showChat ? '1px solid #7dd3fc' : '1px solid #1e4d8c' }}
+                  onClick={() => setShowChat(v => !v)}
+                  title="AI Chat"
+                >💬</button>
+                <UserAvatar user={currentUser} onClick={currentUser ? () => setShowProfile(true) : undefined} />
+              </>
+            ) : (
+              <>
+                <button style={styles.settingsBtn} onClick={() => setShowSettings(true)}>⚙ Settings</button>
+                <button style={styles.newTaskBtn} onClick={() => setShowForm(true)}>+ New Task</button>
+                <UserAvatar user={currentUser} onClick={currentUser ? () => setShowProfile(true) : undefined} />
+              </>
+            )}
           </div>
         </header>
 
-        {/* Body: kanban (or detail) + chat */}
+        {/* Body: kanban/detail + chat (desktop side-by-side, mobile stacked) */}
         <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden', position: 'relative', zIndex: 1 }}>
           {/* Main content */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
             {selectedTask ? (
-              <div style={{ padding: '20px 20px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ padding: isMobile ? '12px' : '20px', overflowY: 'auto', flex: 1 }}>
                 <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>
-                  &larr; Back to Tasks
+                  &larr; Back
                 </button>
                 <TaskDetail task={selectedTask} />
               </div>
@@ -175,13 +211,40 @@ export default function App() {
                 onDelete={handleDelete}
                 onTasksChange={loadTasks}
                 onProjectsChange={loadProjects}
+                isMobile={isMobile}
               />
             )}
           </div>
 
-          {/* Chat panel */}
-          <ChatPanel messages={chatMessages} setMessages={setChatMessages} />
+          {/* Desktop: chat always visible as right sidebar */}
+          {!isMobile && <ChatPanel messages={chatMessages} setMessages={setChatMessages} />}
         </div>
+
+        {/* Mobile: chat as slide-up bottom drawer */}
+        {isMobile && showChat && (
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 90, backgroundColor: 'rgba(0,0,0,0.5)' }}
+            onClick={() => setShowChat(false)}
+          >
+            <div
+              style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0,
+                height: '78vh',
+                borderRadius: '16px 16px 0 0',
+                overflow: 'hidden',
+                display: 'flex', flexDirection: 'column',
+              }}
+              onClick={e => e.stopPropagation()}
+            >
+              <ChatPanel
+                messages={chatMessages}
+                setMessages={setChatMessages}
+                isMobile
+                onClose={() => setShowChat(false)}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Modals */}
         {showForm && (
