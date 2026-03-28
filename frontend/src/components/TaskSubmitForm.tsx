@@ -94,7 +94,7 @@ declare global {
 }
 
 export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) {
-  const [taskType, setTaskType] = useState<'code' | 'research'>('code')
+  const [taskType, setTaskType] = useState<'code' | 'research' | 'coding'>('code')
   const [description, setDescription] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [baseBranch, setBaseBranch] = useState('main')
@@ -173,6 +173,9 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
     if (taskType === 'research') {
       b = s.research_backend || s.default_llm_backend || 'anthropic'
       mdl = s.research_model || s.default_llm_model || ''
+    } else if (taskType === 'coding') {
+      b = (s as any).coding_backend || s.code_backend || s.default_llm_backend || 'anthropic'
+      mdl = (s as any).coding_model || s.code_model || s.default_llm_model || ''
     } else {
       b = s.code_backend || s.default_llm_backend || 'anthropic'
       mdl = s.code_model || s.default_llm_model || ''
@@ -290,7 +293,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
     e.preventDefault()
     setError('')
     if (!description.trim()) { setError('Description is required.'); return }
-    if (taskType === 'code' && !repoUrl.trim()) { setError('Repo URL is required for code tasks.'); return }
+    if (taskType === 'code' && !repoUrl.trim()) { setError('Repo URL is required for Github Coding tasks.'); return }
     setLoading(true)
     try {
       const formData = new FormData()
@@ -370,20 +373,15 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
       <h2 style={{ margin: '0 0 20px', color: '#7dd3fc', fontSize: '18px' }}>New Agent Task</h2>
 
       {/* Task type toggle */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-        <button
-          type="button"
-          style={taskType === 'code' ? tabActive : tabInactive}
-          onClick={() => setTaskType('code')}
-        >
-          Code Task
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        <button type="button" style={taskType === 'code' ? tabActive : tabInactive} onClick={() => setTaskType('code')}>
+          Github Coding
         </button>
-        <button
-          type="button"
-          style={taskType === 'research' ? tabActive : tabInactive}
-          onClick={() => setTaskType('research')}
-        >
-          Research Task
+        <button type="button" style={taskType === 'coding' ? tabActive : tabInactive} onClick={() => setTaskType('coding')}>
+          Coding
+        </button>
+        <button type="button" style={taskType === 'research' ? tabActive : tabInactive} onClick={() => setTaskType('research')}>
+          Research
         </button>
       </div>
 
@@ -397,9 +395,11 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
             style={{ ...textarea, flex: 1 }}
             value={description}
             onChange={e => setDescription(e.target.value)}
-            placeholder={taskType === 'research'
-              ? 'What would you like researched?'
-              : 'Describe what the agent should do...'}
+            placeholder={
+              taskType === 'research' ? 'What would you like researched?' :
+              taskType === 'coding' ? 'Describe the script or code to generate...' :
+              'Describe what the agent should do in the repository...'
+            }
           />
           <button
             type="button"
@@ -462,7 +462,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
           )}
         </div>
 
-        {/* Code-only fields */}
+        {/* Github Coding-only fields */}
         {taskType === 'code' && (
           <>
             <label style={label}>Repository *</label>
@@ -625,7 +625,10 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
         <div style={btnRow}>
           <button type="button" style={btnSecondary} onClick={onClose}>Cancel</button>
           <button type="submit" style={btnPrimary} disabled={loading}>
-            {loading ? 'Submitting...' : taskType === 'research' ? 'Run Research' : 'Run Agent'}
+            {loading ? 'Submitting...' :
+            taskType === 'research' ? 'Run Research' :
+            taskType === 'coding' ? 'Generate Script' :
+            'Run Agent'}
           </button>
         </div>
       </form>

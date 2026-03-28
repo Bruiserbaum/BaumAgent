@@ -219,6 +219,24 @@ async def download_task_output(
     raise HTTPException(status_code=404, detail=detail)
 
 
+@router.get("/{task_id}/output-text")
+async def get_task_output_text(
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Return the raw text content of a coding task's output file (for copy-to-clipboard)."""
+    from fastapi.responses import PlainTextResponse
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+    if not task.output_file or not os.path.isfile(task.output_file):
+        raise HTTPException(status_code=404, detail="No output file for this task")
+    with open(task.output_file, "r", encoding="utf-8", errors="replace") as fh:
+        content = fh.read()
+    return PlainTextResponse(content)
+
+
 @router.put("/{task_id}/project", response_model=TaskRead)
 def assign_project(
     task_id: str,

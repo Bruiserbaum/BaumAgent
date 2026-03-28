@@ -107,6 +107,8 @@ class PortalSettings(BaseModel):
     research_model: str = ""
     code_backend: str = ""
     code_model: str = ""
+    coding_backend: str = ""
+    coding_model: str = ""
     doc_format: DocFormatSettings = DocFormatSettings()
     smb: SMBSettings = SMBSettings()
 

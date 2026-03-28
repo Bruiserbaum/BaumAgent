@@ -38,6 +38,8 @@ const DEFAULT_SETTINGS: PortalSettings = {
   research_model: '',
   code_backend: '',
   code_model: '',
+  coding_backend: '',
+  coding_model: '',
   doc_format: DEFAULT_DOC_FORMAT,
   smb: DEFAULT_SMB,
 }
@@ -335,7 +337,7 @@ export default function SettingsPanel({ onClose }: Props) {
               Override the default LLM per context. Leave blank to use the global default above.
             </p>
 
-            {(['chat', 'research', 'code'] as const).map(ctx => {
+            {(['chat', 'research', 'code', 'coding'] as const).map(ctx => {
               const ctxBackend = (settings as any)[`${ctx}_backend`] as string
               const ctxModel = (settings as any)[`${ctx}_model`] as string
               // Resolve effective backend for model list: ctx override or global default
@@ -346,7 +348,7 @@ export default function SettingsPanel({ onClose }: Props) {
               return (
                 <div key={ctx} style={{ marginBottom: '16px' }}>
                   <div style={{ color: '#64748b', fontSize: '12px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                    {ctx === 'chat' ? 'AI Chat' : ctx === 'research' ? 'Research Tasks' : 'Code Tasks'}
+                    {ctx === 'chat' ? 'AI Chat' : ctx === 'research' ? 'Research Tasks' : ctx === 'coding' ? 'Coding (Scripts)' : 'Github Coding'}
                   </div>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <select

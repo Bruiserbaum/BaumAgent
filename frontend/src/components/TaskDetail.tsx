@@ -1,6 +1,17 @@
 import { useState, useEffect, useRef } from 'react'
 import { Task, api } from '../api/client'
 
+const copyBtn: React.CSSProperties = {
+  backgroundColor: '#0d2040',
+  color: '#7dd3fc',
+  border: '1px solid #1e4d8c',
+  borderRadius: '6px',
+  padding: '8px 18px',
+  cursor: 'pointer',
+  fontWeight: 600,
+  fontSize: '14px',
+}
+
 interface Props {
   task: Task
 }
@@ -70,8 +81,21 @@ const STATUS_TERMINAL = new Set(['complete', 'failed'])
 
 export default function TaskDetail({ task }: Props) {
   const [log, setLog] = useState(task.log ?? '')
+  const [copyLabel, setCopyLabel] = useState('Copy Script')
   const termRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
+
+  const handleCopyScript = async () => {
+    try {
+      const text = await api.getTaskOutputText(task.id)
+      await navigator.clipboard.writeText(text)
+      setCopyLabel('Copied!')
+      setTimeout(() => setCopyLabel('Copy Script'), 2000)
+    } catch {
+      setCopyLabel('Failed')
+      setTimeout(() => setCopyLabel('Copy Script'), 2000)
+    }
+  }
 
   // Auto-scroll to bottom when log updates
   useEffect(() => {
@@ -116,16 +140,17 @@ export default function TaskDetail({ task }: Props) {
     }
   }, [task.id, task.status, task.log])
 
+  const typeLabel = task.task_type === 'research' ? 'Research' : task.task_type === 'coding' ? 'Script' : 'Github'
   const typeBadgeStyle: React.CSSProperties = {
-    backgroundColor: task.task_type === 'research' ? '#0d3340' : '#1e293b',
-    color: task.task_type === 'research' ? '#38bdf8' : '#94a3b8',
+    backgroundColor: task.task_type === 'research' ? '#0d3340' : task.task_type === 'coding' ? '#0d2d1a' : '#1e1b3a',
+    color: task.task_type === 'research' ? '#38bdf8' : task.task_type === 'coding' ? '#4ade80' : '#a78bfa',
     borderRadius: '4px',
     padding: '2px 8px',
     fontSize: '11px',
     fontWeight: 700,
     textTransform: 'uppercase',
     letterSpacing: '0.06em',
-    border: `1px solid ${task.task_type === 'research' ? '#0369a1' : '#334155'}`,
+    border: `1px solid ${task.task_type === 'research' ? '#0369a1' : task.task_type === 'coding' ? '#166534' : '#5b21b6'}`,
   }
 
   return (
@@ -135,7 +160,7 @@ export default function TaskDetail({ task }: Props) {
           <h2 style={{ margin: 0, color: '#7dd3fc', fontSize: '18px', flex: 1 }}>
             {task.description}
           </h2>
-          <span style={typeBadgeStyle}>{task.task_type === 'research' ? 'Research' : 'Code'}</span>
+          <span style={typeBadgeStyle}>{typeLabel}</span>
         </div>
 
         <div style={fieldRow}>
@@ -211,6 +236,18 @@ export default function TaskDetail({ task }: Props) {
             <span style={{ color: '#4ade80', fontWeight: 600 }}>Research report ready</span>
             <button style={downloadBtn} onClick={() => api.downloadTask(task.id)}>
               &#x2B07; Download Report
+            </button>
+          </div>
+        )}
+
+        {(task.task_type === 'coding' && task.status === 'complete') && (
+          <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: '#091428', border: '1px solid #1e4d8c', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{ color: '#7dd3fc', fontWeight: 600 }}>Script ready</span>
+            <button style={copyBtn} onClick={handleCopyScript}>
+              &#x2398; {copyLabel}
+            </button>
+            <button style={downloadBtn} onClick={() => api.downloadTask(task.id)}>
+              &#x2B07; Download
             </button>
           </div>
         )}

@@ -107,6 +107,8 @@ export interface PortalSettings {
   research_model: string
   code_backend: string
   code_model: string
+  coding_backend: string
+  coding_model: string
   doc_format: DocFormatSettings
   smb: SMBSettings
 }
@@ -139,6 +141,12 @@ export const api = {
   downloadTask: (id: string): void => {
     window.open(`${BASE}/tasks/${id}/download`, '_blank')
   },
+
+  getTaskOutputText: (id: string): Promise<string> =>
+    fetch(`${BASE}/tasks/${id}/output-text`).then(r => {
+      if (!r.ok) throw new Error('No output')
+      return r.text()
+    }),
 
   getSettings: (): Promise<PortalSettings> =>
     fetch(`${BASE}/settings`).then(r => r.json()),

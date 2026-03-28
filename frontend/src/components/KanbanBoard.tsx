@@ -49,6 +49,7 @@ function TaskCard({
 }) {
   const colors = STATUS_COLORS[task.status] ?? STATUS_COLORS.queued
   const isResearch = task.task_type === 'research'
+  const isCoding = task.task_type === 'coding'
   const isNext = queuePosition === 1
 
   return (
@@ -87,12 +88,14 @@ function TaskCard({
           </span>
         )}
         <span style={{
-          backgroundColor: isResearch ? '#0d3340' : '#1e293b',
-          color: isResearch ? '#38bdf8' : '#64748b',
+          backgroundColor: isResearch ? '#0d3340' : isCoding ? '#0d2d1a' : '#1e1b3a',
+          color: isResearch ? '#38bdf8' : isCoding ? '#4ade80' : '#a78bfa',
           borderRadius: '4px', padding: '1px 6px', fontSize: '10px', fontWeight: 700,
-          textTransform: 'uppercase', border: `1px solid ${isResearch ? '#0369a1' : '#334155'}`, flexShrink: 0,
+          textTransform: 'uppercase',
+          border: `1px solid ${isResearch ? '#0369a1' : isCoding ? '#166534' : '#5b21b6'}`,
+          flexShrink: 0,
         }}>
-          {isResearch ? 'Research' : 'Code'}
+          {isResearch ? 'Research' : isCoding ? 'Script' : 'Github'}
         </span>
       </div>
 

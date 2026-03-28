@@ -19,13 +19,59 @@ from routers.settings import get_doc_format
 
 
 CODE_SYSTEM_PROMPT = (
-    "You are BaumAgent, an autonomous AI software engineer. "
-    "You have been given a task to complete on a GitHub repository. "
-    "Use your tools to explore the codebase, understand what needs to change, "
-    "make the changes, then call finish() with a summary. "
-    "Be thorough: read relevant files before making changes. "
-    "Use web_search when you need to look up APIs, docs, or examples. "
-    "Always create clean, working code."
+    "You are BaumAgent, an autonomous AI software engineer working on a GitHub repository.\n\n"
+
+    "MAIN TASK\n"
+    "Use your tools to explore the codebase, understand what needs to change, and make the "
+    "required changes. Read relevant files before modifying them. Use web_search when you need "
+    "to look up APIs, docs, or examples. Always create clean, working code.\n\n"
+
+    "REQUIRED POST-TASK STEPS — complete these after finishing the main changes:\n\n"
+
+    "1. VERSION INCREMENT\n"
+    "Search for version files: package.json, setup.py, pyproject.toml, Cargo.toml, VERSION, "
+    "version.txt, __version__.py, AssemblyInfo.cs, or any file containing a version string. "
+    "If found, increment the patch version (e.g. 1.2.3 → 1.2.4). For a significant new feature "
+    "increment the minor version (1.2.3 → 1.3.0). If no version file exists, skip this step.\n\n"
+
+    "2. README UPDATE\n"
+    "Open README.md (or README.rst if no .md exists). Add or update a 'Changelog' or "
+    "'Recent Changes' section near the top describing what was changed and why. Keep existing "
+    "content intact.\n\n"
+
+    "3. INSTALLER / BUILD SCRIPTS\n"
+    "If the repo contains an installer or build script (install.sh, setup.py, Makefile, "
+    ".nsis, .iss, CMakeLists.txt, build.gradle, pom.xml), check whether it needs updating for "
+    "new files, dependencies, or the version change. Update it if needed.\n\n"
+
+    "4. FINISH\n"
+    "Call finish() with a summary covering: the main changes, the version bump (if any), "
+    "the README update, and any installer changes."
+)
+
+CODING_SYSTEM_PROMPT = (
+    "You are BaumAgent, an autonomous AI script and code generator.\n\n"
+
+    "Your job is to write complete, production-ready scripts or code files based on the user's "
+    "description. You are NOT working inside a GitHub repository — you write files directly to "
+    "an output directory that the user can download.\n\n"
+
+    "PROCESS\n"
+    "1. Understand exactly what the user needs: the language, platform, inputs, outputs, and "
+    "any edge cases.\n"
+    "2. Use web_search and read_url if you need to look up APIs, syntax, or best practices.\n"
+    "3. Write the complete, working script(s) using write_file. Include helpful comments.\n"
+    "4. If the task warrants multiple files (e.g. a main script + a helper module + a config), "
+    "write all of them.\n"
+    "5. Call finish() with the filename of the primary output file and a summary of what was "
+    "created and how to use it.\n\n"
+
+    "WRITING STANDARDS\n"
+    "- Write complete, runnable code — no placeholders, no TODO stubs.\n"
+    "- Include inline comments explaining non-obvious logic.\n"
+    "- Handle errors and edge cases gracefully.\n"
+    "- For shell/PowerShell scripts, include usage instructions at the top as comments.\n"
+    "- For Python scripts, include a main() function and if __name__ == '__main__' guard."
 )
 
 RESEARCH_SYSTEM_PROMPT = (
@@ -244,6 +290,82 @@ RESEARCH_TOOL_DEFINITIONS: list[ToolDefinition] = [
     },
 ]
 
+# Tools available for local coding / script-generation tasks
+CODING_TOOL_DEFINITIONS: list[ToolDefinition] = [
+    {
+        "name": "write_file",
+        "description": "Write a file to the output directory. Use this to create scripts, code files, configs, etc.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string",
+                    "description": "Filename including extension, e.g. 'script.ps1' or 'utils/helper.py'.",
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The complete file content.",
+                },
+            },
+            "required": ["filename", "content"],
+        },
+    },
+    {
+        "name": "read_file",
+        "description": "Read a file you previously wrote, to review or build on it.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string",
+                    "description": "Filename to read (must have been written in this session).",
+                }
+            },
+            "required": ["filename"],
+        },
+    },
+    {
+        "name": "web_search",
+        "description": "Search the web using DuckDuckGo and return results.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "The search query."}
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "read_url",
+        "description": "Fetch and read content from a URL.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "description": "The URL to fetch."}
+            },
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "finish",
+        "description": "Signal that all scripts are written and ready.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "summary": {
+                    "type": "string",
+                    "description": "Summary of what was created and how to use it.",
+                },
+                "main_file": {
+                    "type": "string",
+                    "description": "Filename of the primary output script/file.",
+                },
+            },
+            "required": ["summary", "main_file"],
+        },
+    },
+]
+
 # Keep backward-compatible alias pointing to code tools
 TOOL_DEFINITIONS = CODE_TOOL_DEFINITIONS
 
@@ -254,8 +376,10 @@ class AgentService:
         self._db = db
         self._settings = settings
         self._repo_path: str = ""
+        self._output_dir: str = ""
         self._finished: bool = False
         self._research_result: dict | None = None
+        self._coding_result: dict | None = None
         self._collected_image_urls: list[str] = []
 
     # ------------------------------------------------------------------
@@ -371,16 +495,53 @@ class AgentService:
         self._log(f"[finish] Research complete: {title}")
         return "Research complete."
 
+    def _tool_coding_write_file(self, filename: str, content: str) -> str:
+        # Sanitize path — no traversal outside output dir
+        safe_name = os.path.normpath(filename).lstrip("/\\")
+        full_path = os.path.join(self._output_dir, safe_name)
+        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        try:
+            with open(full_path, "w", encoding="utf-8") as fh:
+                fh.write(content)
+            size = len(content.encode("utf-8"))
+            self._log(f"[write_file] {safe_name} ({size} bytes)")
+            return f"Written: {safe_name}"
+        except Exception as exc:
+            return f"Error writing file: {exc}"
+
+    def _tool_coding_read_file(self, filename: str) -> str:
+        safe_name = os.path.normpath(filename).lstrip("/\\")
+        full_path = os.path.join(self._output_dir, safe_name)
+        if not os.path.isfile(full_path):
+            return f"File not found: {safe_name}"
+        try:
+            with open(full_path, "r", encoding="utf-8", errors="replace") as fh:
+                return fh.read(8000)
+        except Exception as exc:
+            return f"Error reading file: {exc}"
+
+    def _tool_finish_coding(self, summary: str, main_file: str) -> str:
+        self._finished = True
+        self._coding_result = {"summary": summary, "main_file": main_file}
+        self._log(f"[finish] Coding complete: {main_file}")
+        return "Scripts ready."
+
     # ------------------------------------------------------------------
     # Tool dispatcher
     # ------------------------------------------------------------------
 
     async def tool_executor(self, name: str, args: dict) -> str:
+        task_type = getattr(self._task, "task_type", "code")
+
         if name == "list_dir":
             return self._tool_list_dir(args.get("path", "."))
         elif name == "read_file":
+            if task_type == "coding":
+                return self._tool_coding_read_file(args["filename"])
             return self._tool_read_file(args["path"])
         elif name == "write_file":
+            if task_type == "coding":
+                return self._tool_coding_write_file(args["filename"], args["content"])
             return self._tool_write_file(args["path"], args["content"])
         elif name == "delete_file":
             return self._tool_delete_file(args["path"])
@@ -389,12 +550,16 @@ class AgentService:
         elif name == "read_url":
             return self._tool_read_url(args["url"])
         elif name == "finish":
-            task_type = getattr(self._task, "task_type", "code")
             if task_type == "research":
                 return self._tool_finish_research(
                     title=args.get("title", "Research Report"),
                     sections=args.get("sections", []),
                     sources=args.get("sources", []),
+                )
+            elif task_type == "coding":
+                return self._tool_finish_coding(
+                    summary=args.get("summary", ""),
+                    main_file=args.get("main_file", ""),
                 )
             else:
                 return self._tool_finish_code(args.get("summary", ""))
@@ -449,6 +614,8 @@ class AgentService:
 
         if task_type == "research":
             await self._run_research(task, db, llm_client)
+        elif task_type == "coding":
+            await self._run_coding(task, db, llm_client)
         else:
             await self._run_code(task, db, settings, llm_client)
 
@@ -535,6 +702,53 @@ class AgentService:
                         self._log(f"[smb] Uploaded to {unc}")
             except Exception as _smb_err:
                 self._log(f"[smb] Upload failed (non-fatal): {_smb_err}")
+
+        task.status = TaskStatus.COMPLETE
+        task.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        self._log("Done.")
+
+    async def _run_coding(self, task, db, llm_client) -> None:
+        """Run a local coding/script task: generate files, no GitHub."""
+        output_dir = f"/app/data/outputs/{task.id}"
+        os.makedirs(output_dir, exist_ok=True)
+        self._output_dir = output_dir
+
+        self._finished = False
+        self._coding_result = None
+
+        initial_message = (
+            f"Coding task: {task.description}\n\n"
+            "Write complete, production-ready scripts. Use write_file to create each file. "
+            "Search the web if you need to look up syntax, APIs, or best practices. "
+            "When all files are written, call finish() with the primary filename and a usage summary."
+        )
+
+        await llm_client.run_agent_loop(
+            system=CODING_SYSTEM_PROMPT,
+            initial_message=self._build_initial_message(initial_message),
+            tools=CODING_TOOL_DEFINITIONS,
+            tool_executor=self.tool_executor,
+            log_fn=self._log,
+        )
+
+        if self._coding_result:
+            main_file = self._coding_result.get("main_file", "")
+            full_path = os.path.join(output_dir, os.path.normpath(main_file).lstrip("/\\"))
+            if os.path.isfile(full_path):
+                task.output_file = full_path
+                self._log(f"Primary output: {full_path}")
+            else:
+                # Pick first file in output dir as fallback
+                files = [f for f in os.listdir(output_dir) if os.path.isfile(os.path.join(output_dir, f))]
+                if files:
+                    task.output_file = os.path.join(output_dir, sorted(files)[0])
+                    self._log(f"Primary output (fallback): {task.output_file}")
+        else:
+            self._log("WARNING: LLM did not call finish() — checking output dir for files")
+            files = [f for f in os.listdir(output_dir) if os.path.isfile(os.path.join(output_dir, f))]
+            if files:
+                task.output_file = os.path.join(output_dir, sorted(files)[0])
 
         task.status = TaskStatus.COMPLETE
         task.updated_at = datetime.now(timezone.utc)
