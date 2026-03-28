@@ -123,6 +123,9 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
   const [docIncludeRisks, setDocIncludeRisks] = useState(true)
   const [docIncludeAppendix, setDocIncludeAppendix] = useState(false)
   const [showDocOptional, setShowDocOptional] = useState(false)
+  // Fallback
+  const [fallbackToAnthropic, setFallbackToAnthropic] = useState(false)
+  const [fallbackAnthropicModel, setFallbackAnthropicModel] = useState('claude-sonnet-4-6')
   // Github Coding options
   const [deliveryMode, setDeliveryMode] = useState<'pr_mode' | 'direct_commit' | 'plan_only'>('pr_mode')
   const [buildAfterChange, setBuildAfterChange] = useState(true)
@@ -375,6 +378,8 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
         formData.append('update_docs', updateDocs)
         formData.append('update_changelog', String(updateChangelog))
       }
+      formData.append('fallback_to_anthropic', String(fallbackToAnthropic))
+      formData.append('fallback_anthropic_model', fallbackAnthropicModel)
       if (projectId) formData.append('project_id', projectId)
       images.forEach(img => formData.append('images', img))
 
@@ -837,6 +842,40 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
             <option key={m} value={m}>{m}</option>
           ))}
         </select>
+
+        {/* Anthropic fallback — only visible when primary backend is not Anthropic */}
+        {backend !== 'anthropic' && (
+          <div style={{ backgroundColor: '#0f172a', border: '1px solid #1e3a5f', borderRadius: '6px', padding: '10px 12px', marginBottom: '14px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', userSelect: 'none' }}>
+              <input
+                type="checkbox"
+                checked={fallbackToAnthropic}
+                onChange={e => setFallbackToAnthropic(e.target.checked)}
+                style={{ accentColor: '#f59e0b', width: '14px', height: '14px', cursor: 'pointer', flexShrink: 0 }}
+              />
+              <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 600 }}>
+                Fallback to Anthropic if model gets stuck
+              </span>
+            </label>
+            {fallbackToAnthropic && (
+              <div style={{ marginTop: '8px', paddingLeft: '22px' }}>
+                <label style={{ ...label, marginBottom: '4px', color: '#64748b', fontSize: '11px' }}>Fallback Model</label>
+                <select
+                  style={{ ...selectStyle, marginBottom: 0, fontSize: '12px' }}
+                  value={fallbackAnthropicModel}
+                  onChange={e => setFallbackAnthropicModel(e.target.value)}
+                >
+                  <option value="claude-sonnet-4-6">claude-sonnet-4-6 (recommended)</option>
+                  <option value="claude-opus-4-6">claude-opus-4-6 (most capable)</option>
+                  <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fastest)</option>
+                </select>
+                <div style={{ fontSize: '11px', color: '#475569', marginTop: '5px' }}>
+                  Triggers if the primary model raises an error or fails to produce output after the full agent loop.
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Project selector */}
         {projects && projects.length > 0 && (

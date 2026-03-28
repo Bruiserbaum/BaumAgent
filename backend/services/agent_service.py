@@ -876,6 +876,28 @@ class AgentService:
     # Main run
     # ------------------------------------------------------------------
 
+    async def _dispatch(self, task_type: str, task, db, settings, llm_client) -> None:
+        """Dispatch to the appropriate runner based on task_type."""
+        if task_type == "research":
+            await self._run_research(task, db, llm_client)
+        elif task_type == "coding":
+            await self._run_coding(task, db, llm_client)
+        elif task_type == "structured_document":
+            await self._run_structured_document(task, db, llm_client)
+        else:
+            await self._run_code(task, db, settings, llm_client)
+
+    def _task_produced_output(self, task_type: str) -> bool:
+        """Return True if the agent actually finished and produced usable output."""
+        if task_type == "research":
+            return self._research_result is not None
+        if task_type == "coding":
+            return self._coding_result is not None
+        if task_type == "structured_document":
+            return self._structured_doc_result is not None
+        # For code tasks, success is measured by task status being set to COMPLETE
+        return self._finished
+
     async def run(self) -> None:
         task = self._task
         db = self._db
@@ -888,17 +910,49 @@ class AgentService:
         self._log("Task started.")
 
         task_type = getattr(task, "task_type", "code")
-        llm_client = get_llm_client(task.llm_backend, task.llm_model, settings)
-        self._log(f"Starting agent loop with {task.llm_backend}/{task.llm_model}")
+        opts: dict = json.loads(task.extra_data or "{}")
+        fallback_enabled = opts.get("fallback_to_anthropic", False)
+        fallback_model = opts.get("fallback_anthropic_model", "claude-sonnet-4-6")
+        primary_backend = task.llm_backend
 
-        if task_type == "research":
-            await self._run_research(task, db, llm_client)
-        elif task_type == "coding":
-            await self._run_coding(task, db, llm_client)
-        elif task_type == "structured_document":
-            await self._run_structured_document(task, db, llm_client)
-        else:
-            await self._run_code(task, db, settings, llm_client)
+        llm_client = get_llm_client(primary_backend, task.llm_model, settings)
+        self._log(f"Starting agent loop with {primary_backend}/{task.llm_model}")
+
+        primary_failed = False
+        primary_error: Exception | None = None
+
+        try:
+            await self._dispatch(task_type, task, db, settings, llm_client)
+        except Exception as exc:
+            primary_failed = True
+            primary_error = exc
+            self._log(f"[error] Primary model raised an exception: {exc}")
+
+        # Check if we should fall back: exception OR agent never called finish()
+        should_fallback = (
+            fallback_enabled
+            and primary_backend != "anthropic"
+            and settings.anthropic_api_key
+            and (primary_failed or not self._task_produced_output(task_type))
+        )
+
+        if should_fallback:
+            reason = "exception" if primary_failed else "did not produce output"
+            self._log(
+                f"[fallback] Primary model ({primary_backend}/{task.llm_model}) {reason}. "
+                f"Retrying with Anthropic {fallback_model} ..."
+            )
+            # Reset task to RUNNING for the retry
+            task.status = TaskStatus.RUNNING
+            task.updated_at = datetime.now(timezone.utc)
+            db.commit()
+
+            fallback_client = get_llm_client("anthropic", fallback_model, settings)
+            await self._dispatch(task_type, task, db, settings, fallback_client)
+
+        elif primary_failed:
+            # No fallback — re-raise so the worker marks the task as FAILED
+            raise primary_error  # type: ignore[misc]
 
     async def _run_research(self, task, db, llm_client) -> None:
         """Run a research task: web search + document generation, no GitHub."""

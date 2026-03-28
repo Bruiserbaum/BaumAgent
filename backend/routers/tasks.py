@@ -35,6 +35,9 @@ async def create_task(
     output_format: str | None = Form(None),
     project_id: Optional[str] = Form(None),
     images: list[UploadFile] = File(default=[]),
+    # Fallback option
+    fallback_to_anthropic: str = Form("false"),
+    fallback_anthropic_model: str = Form("claude-sonnet-4-6"),
     # Github Coding options
     delivery_mode: str = Form("pr_mode"),
     build_after_change: str = Form("true"),
@@ -82,8 +85,14 @@ async def create_task(
                 f.write(await img.read())
             image_paths.append(rel_path)
 
+    fallback_fields = {
+        "fallback_to_anthropic": fallback_to_anthropic.lower() == "true",
+        "fallback_anthropic_model": fallback_anthropic_model,
+    }
+
     if task_type == "structured_document":
         extra = json.dumps({
+            **fallback_fields,
             "document_mode": document_mode,
             "title": doc_title,
             "audience": doc_audience,
@@ -109,6 +118,7 @@ async def create_task(
         })
     else:
         extra = json.dumps({
+            **fallback_fields,
             "delivery_mode": delivery_mode,
             "build_after_change": build_after_change.lower() == "true",
             "create_release_artifacts": create_release_artifacts.lower() == "true",
