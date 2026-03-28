@@ -156,10 +156,8 @@ export default function App() {
   return (
     <div style={{
       ...styles.app,
-      // On mobile let content scroll naturally; desktop keeps overflow:hidden
-      overflow: isMobile ? 'visible' : 'hidden',
-      height: isMobile ? 'auto' : '100vh',
-      minHeight: isMobile ? '100dvh' : undefined,
+      overflow: 'hidden',
+      height: '100dvh',
     }}>
         <DataCenterBackground />
 
@@ -213,10 +211,20 @@ export default function App() {
 
         {/* Body */}
         {isMobile ? (
-          // Mobile: normal document flow, scrolls naturally, padded below fixed header
-          <div style={{ paddingTop: `${MOBILE_HEADER_H}px`, position: 'relative', zIndex: 1, minHeight: `calc(100dvh - ${MOBILE_HEADER_H}px)` }}>
+          // Mobile: fixed-position scrollable container below the fixed header
+          <div style={{
+            position: 'fixed',
+            top: `${MOBILE_HEADER_H}px`,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            zIndex: 1,
+            WebkitOverflowScrolling: 'touch',
+          }}>
             {selectedTask ? (
-              <div style={{ padding: '12px', overflowY: 'auto' }}>
+              <div style={{ padding: '12px' }}>
                 <button style={styles.backBtn} onClick={() => setSelectedTaskId(null)}>&larr; Back</button>
                 <TaskDetail task={selectedTask} />
               </div>
