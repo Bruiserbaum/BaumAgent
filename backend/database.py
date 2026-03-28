@@ -37,6 +37,7 @@ def _apply_migrations() -> None:
                 ("output_file",  "ALTER TABLE tasks ADD COLUMN output_file VARCHAR"),
                 ("output_format","ALTER TABLE tasks ADD COLUMN output_format VARCHAR"),
                 ("images",       "ALTER TABLE tasks ADD COLUMN images TEXT DEFAULT '[]'"),
+                ("extra_data",   "ALTER TABLE tasks ADD COLUMN extra_data TEXT DEFAULT '{}'"),
             ]
             changed = False
             for col_name, sql in migrations:

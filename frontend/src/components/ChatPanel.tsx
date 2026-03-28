@@ -4,6 +4,7 @@ import { api, ModelsResponse } from '../api/client'
 interface Message {
   role: 'user' | 'assistant'
   content: string
+  images?: string[]   // base64 data URLs (user messages only)
 }
 
 interface Props {
@@ -20,6 +21,7 @@ declare global {
 
 export default function ChatPanel({ messages, setMessages }: Props) {
   const [input, setInput] = useState('')
+  const [attachedImages, setAttachedImages] = useState<string[]>([])
   const [backend, setBackend] = useState('anthropic')
   const [model, setModel] = useState('claude-opus-4-6')
   const [models, setModels] = useState<ModelsResponse>({ anthropic: [], openai: [], ollama: [] })
@@ -79,16 +81,37 @@ export default function ChatPanel({ messages, setMessages }: Props) {
     setIsRecording(true)
   }
 
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items)
+    const imageItems = items.filter(item => item.type.startsWith('image/'))
+    if (imageItems.length === 0) return
+    e.preventDefault()
+    imageItems.forEach(item => {
+      const file = item.getAsFile()
+      if (!file) return
+      const reader = new FileReader()
+      reader.onload = () => {
+        const dataUrl = reader.result as string
+        setAttachedImages(prev => [...prev, dataUrl])
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
   const sendMessage = async () => {
     const text = input.trim()
-    if (!text || loading) return
-    const userMsg: Message = { role: 'user', content: text }
+    if ((!text && attachedImages.length === 0) || loading) return
+    const userMsg: Message = { role: 'user', content: text, images: attachedImages.length > 0 ? [...attachedImages] : undefined }
     const newMessages = [...messages, userMsg]
     setMessages(newMessages)
     setInput('')
+    const imgs = [...attachedImages]
+    setAttachedImages([])
     setLoading(true)
     try {
-      const { message } = await api.chat(newMessages, backend, model)
+      // Build API-safe messages (strip images from history, only last msg uses imgs)
+      const apiMessages = newMessages.map(m => ({ role: m.role, content: m.content }))
+      const { message } = await api.chat(apiMessages, backend, model, imgs.length > 0 ? imgs : undefined)
       setMessages(prev => [...prev, { role: 'assistant', content: message }])
     } catch (err: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}` }])
@@ -195,6 +218,13 @@ export default function ChatPanel({ messages, setMessages }: Props) {
                 wordBreak: 'break-word',
               }}
             >
+              {msg.images && msg.images.length > 0 && (
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: msg.content ? '6px' : 0 }}>
+                  {msg.images.map((img, idx) => (
+                    <img key={idx} src={img} alt="" style={{ maxWidth: '120px', maxHeight: '90px', borderRadius: '4px', objectFit: 'cover', border: '1px solid #1e4d8c' }} />
+                  ))}
+                </div>
+              )}
               {msg.content}
             </div>
             <div style={{ fontSize: '10px', color: '#334155', marginTop: '2px' }}>
@@ -232,12 +262,37 @@ export default function ChatPanel({ messages, setMessages }: Props) {
           flexShrink: 0,
         }}
       >
+        {attachedImages.length > 0 && (
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
+            {attachedImages.map((img, idx) => (
+              <div key={idx} style={{ position: 'relative', display: 'inline-block' }}>
+                <img
+                  src={img}
+                  alt=""
+                  style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '5px', border: '1px solid #1e3a5f', display: 'block' }}
+                />
+                <button
+                  onClick={() => setAttachedImages(prev => prev.filter((_, i) => i !== idx))}
+                  style={{
+                    position: 'absolute', top: '-6px', right: '-6px',
+                    width: '16px', height: '16px', borderRadius: '50%',
+                    backgroundColor: '#1e293b', border: '1px solid #334155',
+                    color: '#94a3b8', cursor: 'pointer', fontSize: '9px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 0, lineHeight: 1,
+                  }}
+                >✕</button>
+              </div>
+            ))}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask a question… (Enter to send, Shift+Enter for newline)"
+            onPaste={handlePaste}
+            placeholder="Ask a question… (Enter to send, Shift+Enter for newline, paste screenshot)"
             rows={3}
             style={{
               flex: 1,
@@ -276,15 +331,15 @@ export default function ChatPanel({ messages, setMessages }: Props) {
             </button>
             <button
               onClick={sendMessage}
-              disabled={!input.trim() || loading}
+              disabled={(!input.trim() && attachedImages.length === 0) || loading}
               style={{
                 width: '34px',
                 height: '34px',
                 borderRadius: '6px',
                 border: '1px solid #1e4d8c',
-                backgroundColor: input.trim() && !loading ? '#0f3460' : '#0a1a30',
-                color: input.trim() && !loading ? '#7dd3fc' : '#1e3a5f',
-                cursor: input.trim() && !loading ? 'pointer' : 'not-allowed',
+                backgroundColor: (input.trim() || attachedImages.length > 0) && !loading ? '#0f3460' : '#0a1a30',
+                color: (input.trim() || attachedImages.length > 0) && !loading ? '#7dd3fc' : '#1e3a5f',
+                cursor: (input.trim() || attachedImages.length > 0) && !loading ? 'pointer' : 'not-allowed',
                 fontSize: '16px',
                 display: 'flex',
                 alignItems: 'center',

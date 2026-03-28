@@ -99,6 +99,13 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
   const [repoUrl, setRepoUrl] = useState('')
   const [baseBranch, setBaseBranch] = useState('main')
   const [outputFormat, setOutputFormat] = useState<'pdf' | 'docx'>('pdf')
+  // Github Coding options
+  const [deliveryMode, setDeliveryMode] = useState<'pr_mode' | 'direct_commit' | 'plan_only'>('pr_mode')
+  const [buildAfterChange, setBuildAfterChange] = useState(true)
+  const [createReleaseArtifacts, setCreateReleaseArtifacts] = useState(false)
+  const [publishRelease, setPublishRelease] = useState(true)
+  const [updateDocs, setUpdateDocs] = useState<'always' | 'if_needed' | 'never'>('if_needed')
+  const [updateChangelog, setUpdateChangelog] = useState(true)
   const [backend, setBackend] = useState('anthropic')
   const [model, setModel] = useState('')
   const [models, setModels] = useState<ModelsResponse>({ anthropic: [], openai: [], ollama: [] })
@@ -305,6 +312,14 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
       formData.append('task_type', taskType)
       if (taskType === 'research') {
         formData.append('output_format', outputFormat)
+      }
+      if (taskType === 'code') {
+        formData.append('delivery_mode', deliveryMode)
+        formData.append('build_after_change', String(buildAfterChange))
+        formData.append('create_release_artifacts', String(createReleaseArtifacts))
+        formData.append('publish_release', String(publishRelease))
+        formData.append('update_docs', updateDocs)
+        formData.append('update_changelog', String(updateChangelog))
       }
       if (projectId) formData.append('project_id', projectId)
       images.forEach(img => formData.append('images', img))
@@ -565,6 +580,46 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
               onChange={e => setBaseBranch(e.target.value)}
               placeholder="main"
             />
+
+            {/* Delivery & post-completion options */}
+            <label style={label}>Delivery Mode</label>
+            <select style={selectStyle} value={deliveryMode} onChange={e => setDeliveryMode(e.target.value as typeof deliveryMode)}>
+              <option value="pr_mode">PR (create pull request)</option>
+              <option value="direct_commit">Direct Commit (push to base branch)</option>
+              <option value="plan_only">Plan Only (no changes committed)</option>
+            </select>
+
+            <label style={{ ...label, marginBottom: '8px' }}>Post-Completion Options</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', marginBottom: '14px', backgroundColor: '#0f172a', border: '1px solid #1e3a5f', borderRadius: '6px', padding: '12px' }}>
+              {([
+                ['Build & validate after change', buildAfterChange, setBuildAfterChange],
+                ['Update changelog', updateChangelog, setUpdateChangelog],
+                ['Create release artifacts', createReleaseArtifacts, setCreateReleaseArtifacts],
+                ['Publish release', publishRelease, setPublishRelease],
+              ] as [string, boolean, (v: boolean) => void][]).map(([lbl, val, setter]) => (
+                <label key={lbl} style={{ display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer', fontSize: '13px', color: '#94a3b8', userSelect: 'none' }}>
+                  <input
+                    type="checkbox"
+                    checked={val}
+                    onChange={e => setter(e.target.checked)}
+                    style={{ accentColor: '#7dd3fc', width: '14px', height: '14px', cursor: 'pointer' }}
+                  />
+                  {lbl}
+                </label>
+              ))}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', color: '#94a3b8', gridColumn: '1 / -1' }}>
+                <span style={{ flexShrink: 0 }}>Update docs:</span>
+                <select
+                  value={updateDocs}
+                  onChange={e => setUpdateDocs(e.target.value as typeof updateDocs)}
+                  style={{ backgroundColor: '#16213e', border: '1px solid #334155', borderRadius: '4px', color: '#e2e8f0', padding: '3px 6px', fontSize: '12px', flex: 1 }}
+                >
+                  <option value="always">Always</option>
+                  <option value="if_needed">If needed</option>
+                  <option value="never">Never</option>
+                </select>
+              </label>
+            </div>
           </>
         )}
 

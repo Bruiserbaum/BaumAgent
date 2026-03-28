@@ -18,36 +18,114 @@ from services import search_service
 from routers.settings import get_doc_format
 
 
-CODE_SYSTEM_PROMPT = (
-    "You are BaumAgent, an autonomous AI software engineer working on a GitHub repository.\n\n"
+def _build_code_system_prompt(opts: dict) -> str:
+    """Build the Github Coding system prompt dynamically based on task options."""
+    delivery_mode = opts.get("delivery_mode", "pr_mode")
+    build_after = opts.get("build_after_change", True)
+    create_artifacts = opts.get("create_release_artifacts", False)
+    publish_release = opts.get("publish_release", True)
+    update_docs = opts.get("update_docs", "if_needed")
+    update_changelog = opts.get("update_changelog", True)
 
-    "MAIN TASK\n"
-    "Use your tools to explore the codebase, understand what needs to change, and make the "
-    "required changes. Read relevant files before modifying them. Use web_search when you need "
-    "to look up APIs, docs, or examples. Always create clean, working code.\n\n"
+    parts = [
+        "You are BaumAgent, an autonomous AI software engineer working on a GitHub repository.\n",
+        "STEP 1 — INSPECT\n"
+        "Before touching any file:\n"
+        "- Read README and main project configuration files (package.json, pyproject.toml, Cargo.toml, etc.)\n"
+        "- Identify the language, framework, build/test commands, and overall code layout\n"
+        "- Locate the files most likely relevant to the requested change\n",
+        "STEP 2 — PLAN\n"
+        "Create a brief internal implementation plan:\n"
+        "- List the files that will change and why\n"
+        "- Describe the behaviour being added or modified\n"
+        "- Do not open a pull request yet\n",
+        "STEP 3 — IMPLEMENT\n"
+        "Make the code changes:\n"
+        "- Edit only files directly relevant to the task\n"
+        "- Preserve existing code style and patterns\n"
+        "- Avoid unrelated refactors unless they are strictly required\n",
+    ]
 
-    "REQUIRED POST-TASK STEPS — complete these after finishing the main changes:\n\n"
+    if build_after:
+        parts.append(
+            "STEP 4 — VALIDATE\n"
+            "After making changes:\n"
+            "- Run linting if a linter is configured (eslint, ruff, pylint, etc.)\n"
+            "- Run the test suite if tests exist\n"
+            "- Run the build if applicable (npm run build, cargo build, dotnet build, etc.)\n"
+            "- Record any failures clearly in your finish() summary\n"
+        )
 
-    "1. VERSION INCREMENT\n"
-    "Search for version files: package.json, setup.py, pyproject.toml, Cargo.toml, VERSION, "
-    "version.txt, __version__.py, AssemblyInfo.cs, or any file containing a version string. "
-    "If found, increment the patch version (e.g. 1.2.3 → 1.2.4). For a significant new feature "
-    "increment the minor version (1.2.3 → 1.3.0). If no version file exists, skip this step.\n\n"
+    parts.append(
+        "STEP 5 — VERIFY\n"
+        "Before delivering:\n"
+        "- Confirm git diff is non-empty; if no files changed stop and call finish() reporting failure\n"
+        "- Summarise every changed file and the reason it changed\n"
+    )
 
-    "2. README UPDATE\n"
-    "Open README.md (or README.rst if no .md exists). Add or update a 'Changelog' or "
-    "'Recent Changes' section near the top describing what was changed and why. Keep existing "
-    "content intact.\n\n"
+    if update_changelog:
+        parts.append(
+            "STEP 6 — CHANGELOG\n"
+            "Add an entry to CHANGELOG.md (create it if absent) describing what changed, why, "
+            "and which version it targets. Keep existing entries intact.\n"
+        )
 
-    "3. INSTALLER / BUILD SCRIPTS\n"
-    "If the repo contains an installer or build script (install.sh, setup.py, Makefile, "
-    ".nsis, .iss, CMakeLists.txt, build.gradle, pom.xml), check whether it needs updating for "
-    "new files, dependencies, or the version change. Update it if needed.\n\n"
+    docs_instruction = {
+        "always": "Update README.md and any relevant docs unconditionally.",
+        "if_needed": "Update README.md and docs only when the change affects setup, usage, CLI flags, or public API.",
+        "never": "Do not modify documentation files.",
+    }.get(update_docs, "Update README.md if the change affects setup or usage.")
+    parts.append(f"STEP 7 — DOCS\n{docs_instruction}\n")
 
-    "4. FINISH\n"
-    "Call finish() with a summary covering: the main changes, the version bump (if any), "
-    "the README update, and any installer changes."
-)
+    if create_artifacts:
+        artifact_note = (
+            "STEP 8 — RELEASE ARTIFACTS\n"
+            "Build release/installer artifacts if a build script exists "
+            "(install.sh, setup.py, Makefile, .nsis, .iss, CMakeLists.txt, build.gradle, pom.xml). "
+            "Increment the version (patch bump unless a significant feature → minor bump).\n"
+        )
+        if publish_release:
+            artifact_note += "After building, create a GitHub release tag and publish it.\n"
+        parts.append(artifact_note)
+    else:
+        # Still version-bump if there's a version file
+        parts.append(
+            "STEP 8 — VERSION\n"
+            "Search for a version file (package.json, setup.py, pyproject.toml, Cargo.toml, VERSION, "
+            "version.txt, __version__.py, AssemblyInfo.cs). If found, increment the patch version "
+            "(e.g. 1.2.3 → 1.2.4). For a significant new feature use a minor bump (1.2.3 → 1.3.0). "
+            "If no version file exists, skip this step. Do not create a release tag.\n"
+        )
+
+    delivery_instructions = {
+        "plan_only": (
+            "DELIVERY\n"
+            "You are in PLAN-ONLY mode. Analyse the repository and produce the implementation plan "
+            "from Step 2, but do NOT make any file edits. Call finish() with the plan as your summary.\n"
+        ),
+        "pr_mode": (
+            "DELIVERY\n"
+            "You are in PR mode. After all changes are validated, the system will automatically "
+            "create a branch, commit, push, and open a pull request. Your job is to complete all "
+            "steps above and call finish() with a summary. Do not commit or push yourself.\n"
+        ),
+        "direct_commit": (
+            "DELIVERY\n"
+            "You are in DIRECT-COMMIT mode. After all changes are validated, the system will "
+            "commit and push directly to the base branch. Your job is to complete all steps above "
+            "and call finish() with a summary. Do not commit or push yourself.\n"
+        ),
+    }.get(delivery_mode, "")
+    parts.append(delivery_instructions)
+
+    parts.append(
+        "FINISH\n"
+        "Call finish() with a summary covering: the main changes made, validation results, "
+        "version bump (if any), changelog entry (if any), and docs updates (if any). "
+        "If no files changed, set the summary to clearly state that no changes were made.\n"
+    )
+
+    return "\n".join(parts)
 
 CODING_SYSTEM_PROMPT = (
     "You are BaumAgent, an autonomous AI script and code generator.\n\n"
@@ -756,7 +834,10 @@ class AgentService:
         self._log("Done.")
 
     async def _run_code(self, task, db, settings, llm_client) -> None:
-        """Run a code task: clone repo, apply changes, open PR."""
+        """Run a code task: clone repo, apply changes, deliver per delivery_mode."""
+        opts: dict = json.loads(task.extra_data or "{}")
+        delivery_mode = opts.get("delivery_mode", "pr_mode")
+
         github_service = GitHubService(
             token=settings.github_token,
             user_name=settings.github_user_name,
@@ -767,7 +848,6 @@ class AgentService:
         self._log(f"Cloned to {self._repo_path}")
 
         try:
-            # 3. Run LLM agent loop
             self._finished = False
             initial_message_text = (
                 f"Task: {task.description}\n"
@@ -776,70 +856,95 @@ class AgentService:
             )
             initial_content = self._build_initial_message(initial_message_text)
 
+            system_prompt = _build_code_system_prompt(opts)
             await llm_client.run_agent_loop(
-                system=CODE_SYSTEM_PROMPT,
+                system=system_prompt,
                 initial_message=initial_content,
                 tools=CODE_TOOL_DEFINITIONS,
                 tool_executor=self.tool_executor,
                 log_fn=self._log,
             )
 
-            # 4. Check for changes
+            # Check for actual changes
             from git import Repo as GitRepo
             repo = GitRepo(self._repo_path)
-            if not repo.is_dirty(untracked_files=True):
-                self._log("WARNING: No changes detected in repository after agent loop.")
+            has_changes = repo.is_dirty(untracked_files=True)
 
-            # 5. Create branch, commit, push
-            branch_name = f"baumagent/{task.id[:8]}"
-            self._log(f"Creating branch {branch_name} ...")
-            github_service.create_branch(self._repo_path, branch_name)
+            if delivery_mode == "plan_only":
+                # No repo mutations — just mark complete
+                task.status = TaskStatus.COMPLETE
+                task.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                self._log("Plan-only mode: no changes committed.")
+                return
+
+            if not has_changes:
+                raise RuntimeError(
+                    "Agent completed without making any file changes. "
+                    "No commit or PR will be created. Check the task log for details."
+                )
 
             commit_message = f"baumagent: {task.description[:72]}\n\nTask-ID: {task.id}"
-            self._log("Committing changes ...")
-            commit_sha = github_service.commit_all(self._repo_path, commit_message)
-            self._log(f"Committed: {commit_sha}")
 
-            self._log("Pushing branch ...")
-            github_service.push(self._repo_path, branch_name)
+            if delivery_mode == "direct_commit":
+                self._log("Committing and pushing directly to base branch ...")
+                commit_sha = github_service.commit_all(self._repo_path, commit_message)
+                self._log(f"Committed: {commit_sha}")
+                github_service.push(self._repo_path, task.base_branch)
+                self._log("Pushed to base branch.")
 
-            # 6. Ask LLM for PR description
-            self._log("Generating PR description ...")
-            pr_description_prompt = (
-                f"Write a concise GitHub pull request description for the following task.\n\n"
-                f"Task: {task.description}\n"
-                f"Repo: {task.repo_url}\n\n"
-                "Include: what was changed and why. Use Markdown. Be concise."
-            )
-            pr_body = await llm_client.run_agent_loop(
-                system="You are a helpful assistant that writes clear pull request descriptions.",
-                initial_message=pr_description_prompt,
-                tools=[],
-                tool_executor=self.tool_executor,
-                log_fn=lambda _: None,
-            )
+                task.status = TaskStatus.COMPLETE
+                task.commit_sha = commit_sha
+                task.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                self._log("Done.")
 
-            # 7. Open PR
-            pr_title = task.description[:72]
-            self._log(f"Opening PR: {pr_title}")
-            pr_url, pr_number = github_service.open_pr(
-                repo_url=task.repo_url,
-                branch_name=branch_name,
-                base_branch=task.base_branch,
-                title=pr_title,
-                body=pr_body or task.description,
-            )
-            self._log(f"PR opened: {pr_url}")
+            else:  # pr_mode (default)
+                branch_name = f"baumagent/{task.id[:8]}"
+                self._log(f"Creating branch {branch_name} ...")
+                github_service.create_branch(self._repo_path, branch_name)
 
-            # 8. Update task to complete
-            task.status = TaskStatus.COMPLETE
-            task.branch_name = branch_name
-            task.pr_url = pr_url
-            task.pr_number = pr_number
-            task.commit_sha = commit_sha
-            task.updated_at = datetime.now(timezone.utc)
-            db.commit()
-            self._log("Done.")
+                self._log("Committing changes ...")
+                commit_sha = github_service.commit_all(self._repo_path, commit_message)
+                self._log(f"Committed: {commit_sha}")
+
+                self._log("Pushing branch ...")
+                github_service.push(self._repo_path, branch_name)
+
+                self._log("Generating PR description ...")
+                pr_description_prompt = (
+                    f"Write a concise GitHub pull request description for the following task.\n\n"
+                    f"Task: {task.description}\n"
+                    f"Repo: {task.repo_url}\n\n"
+                    "Include: what was changed and why. Use Markdown. Be concise."
+                )
+                pr_body = await llm_client.run_agent_loop(
+                    system="You are a helpful assistant that writes clear pull request descriptions.",
+                    initial_message=pr_description_prompt,
+                    tools=[],
+                    tool_executor=self.tool_executor,
+                    log_fn=lambda _: None,
+                )
+
+                pr_title = task.description[:72]
+                self._log(f"Opening PR: {pr_title}")
+                pr_url, pr_number = github_service.open_pr(
+                    repo_url=task.repo_url,
+                    branch_name=branch_name,
+                    base_branch=task.base_branch,
+                    title=pr_title,
+                    body=pr_body or task.description,
+                )
+                self._log(f"PR opened: {pr_url}")
+
+                task.status = TaskStatus.COMPLETE
+                task.branch_name = branch_name
+                task.pr_url = pr_url
+                task.pr_number = pr_number
+                task.commit_sha = commit_sha
+                task.updated_at = datetime.now(timezone.utc)
+                db.commit()
+                self._log("Done.")
+
         finally:
-            # Always clean up the clone directory
             github_service.cleanup(self._repo_path)

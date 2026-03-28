@@ -35,6 +35,13 @@ async def create_task(
     output_format: str | None = Form(None),
     project_id: Optional[str] = Form(None),
     images: list[UploadFile] = File(default=[]),
+    # Github Coding options
+    delivery_mode: str = Form("pr_mode"),
+    build_after_change: str = Form("true"),
+    create_release_artifacts: str = Form("false"),
+    publish_release: str = Form("true"),
+    update_docs: str = Form("if_needed"),
+    update_changelog: str = Form("true"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> Task:
@@ -52,6 +59,15 @@ async def create_task(
                 f.write(await img.read())
             image_paths.append(rel_path)
 
+    extra = json.dumps({
+        "delivery_mode": delivery_mode,
+        "build_after_change": build_after_change.lower() == "true",
+        "create_release_artifacts": create_release_artifacts.lower() == "true",
+        "publish_release": publish_release.lower() == "true",
+        "update_docs": update_docs,
+        "update_changelog": update_changelog.lower() == "true",
+    })
+
     task = Task(
         id=task_id,
         description=description,
@@ -62,6 +78,7 @@ async def create_task(
         task_type=task_type,
         output_format=output_format,
         images=json.dumps(image_paths),
+        extra_data=extra,
         status=TaskStatus.QUEUED,
         log="",
         user_id=current_user.id,

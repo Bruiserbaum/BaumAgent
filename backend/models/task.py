@@ -45,6 +45,7 @@ class Task(Base):
     output_format = Column(String, nullable=True)
     user_id    = Column(String, nullable=True, index=True)   # nullable for backwards compat
     project_id = Column(String, nullable=True, index=True)
+    extra_data = Column(Text, default="{}", nullable=False)  # JSON: code task options
 
 
 # ---------------------------------------------------------------------------
@@ -83,5 +84,6 @@ class TaskRead(BaseModel):
     output_format: Optional[str] = None
     user_id: Optional[str] = None
     project_id: Optional[str] = None
+    extra_data: str = "{}"
 
     model_config = ConfigDict(from_attributes=True)

@@ -205,11 +205,12 @@ export const api = {
     messages: { role: string; content: string }[],
     backend: string,
     model: string,
+    images?: string[],
   ): Promise<{ message: string }> =>
     fetch(`${BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, backend, model }),
+      body: JSON.stringify({ messages, backend, model, images: images ?? [] }),
     }).then(async r => {
       if (!r.ok) throw new Error(await r.text())
       return r.json()
