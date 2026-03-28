@@ -94,6 +94,8 @@ const styles = {
 interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
+  images?: string[]
+  documents?: { filename: string; content: string }[]
 }
 
 export default function App() {

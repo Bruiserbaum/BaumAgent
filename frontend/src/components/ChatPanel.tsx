@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
-import { api, ModelsResponse } from '../api/client'
+import { api, ModelsResponse, DocumentAttachment } from '../api/client'
 
 interface Message {
   role: 'user' | 'assistant'
   content: string
   images?: string[]   // base64 data URLs (user messages only)
+  documents?: { filename: string; content: string }[]  // attached documents (user messages only)
 }
 
 interface Props {
@@ -19,17 +20,22 @@ declare global {
   }
 }
 
+const DOC_ACCEPT = '.pdf,.docx,.xlsx,.xls,.csv'
+
 export default function ChatPanel({ messages, setMessages }: Props) {
   const [input, setInput] = useState('')
   const [attachedImages, setAttachedImages] = useState<string[]>([])
+  const [attachedDocs, setAttachedDocs] = useState<DocumentAttachment[]>([])
   const [backend, setBackend] = useState('anthropic')
   const [model, setModel] = useState('claude-opus-4-6')
   const [models, setModels] = useState<ModelsResponse>({ anthropic: [], openai: [], ollama: [] })
   const [loading, setLoading] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [speechSupported, setSpeechSupported] = useState(false)
   const recognitionRef = useRef<any>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     api.getModels().then(setModels).catch(() => {})
@@ -98,20 +104,56 @@ export default function ChatPanel({ messages, setMessages }: Props) {
     })
   }
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+
+    setUploading(true)
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        try {
+          const doc = await api.uploadDocument(file)
+          setAttachedDocs(prev => [...prev, doc])
+        } catch (err: any) {
+          // Show a brief error for this file
+          const errorMsg = err.message || 'Upload failed'
+          alert(`Failed to process "${file.name}": ${errorMsg}`)
+        }
+      }
+    } finally {
+      setUploading(false)
+      // Reset the input so the same file can be re-selected
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const removeDoc = (index: number) => {
+    setAttachedDocs(prev => prev.filter((_, i) => i !== index))
+  }
+
   const sendMessage = async () => {
     const text = input.trim()
-    if ((!text && attachedImages.length === 0) || loading) return
-    const userMsg: Message = { role: 'user', content: text, images: attachedImages.length > 0 ? [...attachedImages] : undefined }
+    if ((!text && attachedImages.length === 0 && attachedDocs.length === 0) || loading) return
+    const userMsg: Message = {
+      role: 'user',
+      content: text,
+      images: attachedImages.length > 0 ? [...attachedImages] : undefined,
+      documents: attachedDocs.length > 0 ? attachedDocs.map(d => ({ filename: d.filename, content: d.content })) : undefined,
+    }
     const newMessages = [...messages, userMsg]
     setMessages(newMessages)
     setInput('')
     const imgs = [...attachedImages]
+    const docs = [...attachedDocs]
     setAttachedImages([])
+    setAttachedDocs([])
     setLoading(true)
     try {
-      // Build API-safe messages (strip images from history, only last msg uses imgs)
+      // Build API-safe messages (strip images/docs from history, only last msg uses them)
       const apiMessages = newMessages.map(m => ({ role: m.role, content: m.content }))
-      const { message } = await api.chat(apiMessages, backend, model, imgs.length > 0 ? imgs : undefined)
+      const docPayload = docs.length > 0 ? docs.map(d => ({ filename: d.filename, content: d.content })) : undefined
+      const { message } = await api.chat(apiMessages, backend, model, imgs.length > 0 ? imgs : undefined, docPayload)
       setMessages(prev => [...prev, { role: 'assistant', content: message }])
     } catch (err: any) {
       setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err.message}` }])
@@ -136,6 +178,17 @@ export default function ChatPanel({ messages, setMessages }: Props) {
     fontSize: '12px',
     width: '100%',
     marginBottom: '6px',
+  }
+
+  const docIconForExt = (filename: string): string => {
+    const ext = filename.split('.').pop()?.toLowerCase() || ''
+    switch (ext) {
+      case 'pdf': return '📕'
+      case 'docx': return '📘'
+      case 'xlsx': case 'xls': return '📗'
+      case 'csv': return '📊'
+      default: return '📄'
+    }
   }
 
   return (
@@ -218,36 +271,60 @@ export default function ChatPanel({ messages, setMessages }: Props) {
                 wordBreak: 'break-word',
               }}
             >
+              {/* Attached images */}
               {msg.images && msg.images.length > 0 && (
                 <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: msg.content ? '6px' : 0 }}>
                   {msg.images.map((img, idx) => (
-                    <img key={idx} src={img} alt="" style={{ maxWidth: '120px', maxHeight: '90px', borderRadius: '4px', objectFit: 'cover', border: '1px solid #1e4d8c' }} />
+                    <img
+                      key={idx}
+                      src={img}
+                      alt="attached"
+                      style={{ maxWidth: '120px', maxHeight: '80px', borderRadius: '4px', border: '1px solid #334155' }}
+                    />
+                  ))}
+                </div>
+              )}
+              {/* Attached documents */}
+              {msg.documents && msg.documents.length > 0 && (
+                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: msg.content ? '6px' : 0 }}>
+                  {msg.documents.map((doc, idx) => (
+                    <span
+                      key={idx}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        backgroundColor: 'rgba(125,211,252,0.1)',
+                        border: '1px solid rgba(125,211,252,0.2)',
+                        fontSize: '11px',
+                        color: '#7dd3fc',
+                      }}
+                    >
+                      {docIconForExt(doc.filename)} {doc.filename}
+                    </span>
                   ))}
                 </div>
               )}
               {msg.content}
             </div>
-            <div style={{ fontSize: '10px', color: '#334155', marginTop: '2px' }}>
-              {msg.role === 'user' ? 'You' : model}
-            </div>
           </div>
         ))}
         {loading && (
-          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '10px', gap: '8px' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', marginBottom: '10px' }}>
             <div
               style={{
-                padding: '10px 16px',
+                maxWidth: '90%',
+                padding: '8px 12px',
                 borderRadius: '12px 12px 12px 2px',
                 backgroundColor: '#1e293b',
-                border: '1px solid #1e4d8c',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
+                border: '1px solid #334155',
+                color: '#94a3b8',
+                fontSize: '13px',
               }}
             >
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#7dd3fc', display: 'inline-block', animation: 'dotBounce 1.2s infinite ease-in-out', animationDelay: '0s' }} />
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#7dd3fc', display: 'inline-block', animation: 'dotBounce 1.2s infinite ease-in-out', animationDelay: '0.2s' }} />
-              <span style={{ width: '7px', height: '7px', borderRadius: '50%', backgroundColor: '#7dd3fc', display: 'inline-block', animation: 'dotBounce 1.2s infinite ease-in-out', animationDelay: '0.4s' }} />
+              Thinking…
             </div>
           </div>
         )}
@@ -257,129 +334,200 @@ export default function ChatPanel({ messages, setMessages }: Props) {
       {/* Input area */}
       <div
         style={{
-          padding: '10px 12px',
           borderTop: '1px solid rgba(20,50,110,0.6)',
+          padding: '10px 12px',
           flexShrink: 0,
         }}
       >
+        {/* Attached image previews */}
         {attachedImages.length > 0 && (
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '6px' }}>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
             {attachedImages.map((img, idx) => (
-              <div key={idx} style={{ position: 'relative', display: 'inline-block' }}>
+              <div key={idx} style={{ position: 'relative' }}>
                 <img
                   src={img}
-                  alt=""
-                  style={{ width: '56px', height: '56px', objectFit: 'cover', borderRadius: '5px', border: '1px solid #1e3a5f', display: 'block' }}
+                  alt="preview"
+                  style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #334155' }}
                 />
                 <button
                   onClick={() => setAttachedImages(prev => prev.filter((_, i) => i !== idx))}
                   style={{
-                    position: 'absolute', top: '-6px', right: '-6px',
-                    width: '16px', height: '16px', borderRadius: '50%',
-                    backgroundColor: '#1e293b', border: '1px solid #334155',
-                    color: '#94a3b8', cursor: 'pointer', fontSize: '9px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    padding: 0, lineHeight: 1,
+                    position: 'absolute',
+                    top: '-6px',
+                    right: '-6px',
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    border: 'none',
+                    backgroundColor: '#ef4444',
+                    color: '#fff',
+                    fontSize: '10px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 0,
+                    lineHeight: 1,
                   }}
-                >✕</button>
+                >
+                  ×
+                </button>
               </div>
             ))}
           </div>
         )}
+
+        {/* Attached document badges */}
+        {attachedDocs.length > 0 && (
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+            {attachedDocs.map((doc, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '4px 8px',
+                  borderRadius: '6px',
+                  backgroundColor: 'rgba(125,211,252,0.1)',
+                  border: '1px solid rgba(125,211,252,0.25)',
+                  fontSize: '11px',
+                  color: '#7dd3fc',
+                }}
+              >
+                {docIconForExt(doc.filename)}
+                <span style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {doc.filename}
+                </span>
+                <span style={{ color: '#475569', fontSize: '10px' }}>
+                  ({Math.round(doc.char_count / 1000)}k chars)
+                </span>
+                <button
+                  onClick={() => removeDoc(idx)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#ef4444',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    padding: '0 0 0 2px',
+                    lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Uploading indicator */}
+        {uploading && (
+          <div style={{ fontSize: '11px', color: '#7dd3fc', marginBottom: '6px' }}>
+            📎 Processing document…
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
           <textarea
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="Ask a question… (Enter to send, Shift+Enter for newline, paste screenshot)"
-            rows={3}
+            placeholder="Type a message… (paste images, attach files)"
+            rows={2}
             style={{
               flex: 1,
               backgroundColor: '#0f172a',
               border: '1px solid #1e3a5f',
               borderRadius: '6px',
               color: '#e2e8f0',
-              padding: '7px 10px',
+              padding: '8px 10px',
               fontSize: '13px',
               resize: 'none',
-              outline: 'none',
               fontFamily: 'inherit',
+              outline: 'none',
             }}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {/* Attach document button */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={DOC_ACCEPT}
+              multiple
+              onChange={handleFileSelect}
+              style={{ display: 'none' }}
+            />
             <button
-              onClick={toggleRecording}
-              title={speechSupported ? (isRecording ? 'Stop recording' : 'Voice input') : 'Not supported'}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading || uploading}
+              title="Attach document (PDF, Word, Excel, CSV)"
               style={{
                 width: '34px',
-                height: '34px',
+                height: '30px',
                 borderRadius: '6px',
-                border: `1px solid ${isRecording ? '#ef4444' : '#334155'}`,
-                backgroundColor: isRecording ? '#7f1d1d' : '#1e293b',
-                color: isRecording ? '#fca5a5' : '#64748b',
-                cursor: speechSupported ? 'pointer' : 'not-allowed',
-                fontSize: '16px',
+                border: '1px solid #1e3a5f',
+                backgroundColor: uploading ? '#1e4d8c' : '#0f172a',
+                color: uploading ? '#7dd3fc' : '#7dd3fc',
+                cursor: loading || uploading ? 'not-allowed' : 'pointer',
+                fontSize: '15px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                animation: isRecording ? 'micPulse 1s infinite' : undefined,
-                flexShrink: 0,
+                opacity: loading || uploading ? 0.5 : 1,
               }}
             >
-              🎤
+              📎
             </button>
+            {/* Voice recording button */}
+            {speechSupported && (
+              <button
+                onClick={toggleRecording}
+                disabled={loading}
+                title={isRecording ? 'Stop recording' : 'Voice input'}
+                style={{
+                  width: '34px',
+                  height: '30px',
+                  borderRadius: '6px',
+                  border: `1px solid ${isRecording ? '#ef4444' : '#1e3a5f'}`,
+                  backgroundColor: isRecording ? '#7f1d1d' : '#0f172a',
+                  color: isRecording ? '#fca5a5' : '#94a3b8',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                🎤
+              </button>
+            )}
+            {/* Send button */}
             <button
               onClick={sendMessage}
-              disabled={(!input.trim() && attachedImages.length === 0) || loading}
+              disabled={loading || uploading}
               style={{
                 width: '34px',
-                height: '34px',
+                height: '30px',
                 borderRadius: '6px',
                 border: '1px solid #1e4d8c',
-                backgroundColor: (input.trim() || attachedImages.length > 0) && !loading ? '#0f3460' : '#0a1a30',
-                color: (input.trim() || attachedImages.length > 0) && !loading ? '#7dd3fc' : '#1e3a5f',
-                cursor: (input.trim() || attachedImages.length > 0) && !loading ? 'pointer' : 'not-allowed',
-                fontSize: '16px',
+                backgroundColor: '#0f3460',
+                color: '#7dd3fc',
+                cursor: loading || uploading ? 'not-allowed' : 'pointer',
+                fontSize: '14px',
+                fontWeight: 700,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                flexShrink: 0,
+                opacity: loading || uploading ? 0.5 : 1,
               }}
             >
-              ↑
-            </button>
-            <button
-              onClick={() => setMessages([])}
-              title="Clear chat"
-              style={{
-                width: '34px',
-                height: '34px',
-                borderRadius: '6px',
-                border: '1px solid #334155',
-                backgroundColor: 'transparent',
-                color: '#475569',
-                cursor: 'pointer',
-                fontSize: '13px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              ✕
+              ▶
             </button>
           </div>
         </div>
       </div>
-      <style>{`
-        @keyframes micPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
-        @keyframes dotBounce {
-          0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-          40% { transform: translateY(-6px); opacity: 1; }
-        }
-      `}</style>
     </div>
   )
 }

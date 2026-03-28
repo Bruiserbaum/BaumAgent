@@ -113,6 +113,12 @@ export interface PortalSettings {
   smb: SMBSettings
 }
 
+export interface DocumentAttachment {
+  filename: string
+  content: string
+  char_count: number
+}
+
 export const api = {
   createTask: (data: FormData): Promise<Task> =>
     fetch(`${BASE}/tasks`, { method: 'POST', body: data }).then(r => r.json()),
@@ -201,16 +207,37 @@ export const api = {
   testSMB: (): Promise<{ ok: boolean; message: string }> =>
     fetch(`${BASE}/settings/smb/test`, { method: 'POST' }).then(r => r.json()),
 
+  uploadDocument: async (file: File): Promise<DocumentAttachment> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const r = await fetch(`${BASE}/chat/upload-document`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!r.ok) {
+      const text = await r.text()
+      throw new Error(text || 'Upload failed')
+    }
+    return r.json()
+  },
+
   chat: (
     messages: { role: string; content: string }[],
     backend: string,
     model: string,
     images?: string[],
+    documents?: { filename: string; content: string }[],
   ): Promise<{ message: string }> =>
     fetch(`${BASE}/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, backend, model, images: images ?? [] }),
+      body: JSON.stringify({
+        messages,
+        backend,
+        model,
+        images: images ?? [],
+        documents: documents ?? [],
+      }),
     }).then(async r => {
       if (!r.ok) throw new Error(await r.text())
       return r.json()

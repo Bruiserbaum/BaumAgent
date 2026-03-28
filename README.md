@@ -117,6 +117,31 @@ docker compose up -d --build
 
 ---
 
+## AI Chat — Document Attachments
+
+The AI Chat panel supports attaching documents so the AI can read and work with their contents. Click the 📎 paperclip button next to the message input to attach files.
+
+### Supported file types
+
+| Format | Extensions | Library |
+|--------|-----------|---------|
+| **PDF** | `.pdf` | PyPDF2 |
+| **Word** | `.docx` | python-docx |
+| **Excel** | `.xlsx`, `.xls` | openpyxl |
+| **CSV** | `.csv` | Python stdlib |
+
+### How it works
+
+1. Click the 📎 button and select one or more files (or attach multiple files across multiple clicks).
+2. Each file is uploaded to the backend, which extracts the text content and returns it.
+3. Attached files appear as badges below the input area showing filename and character count.
+4. When you send a message, the extracted document text is included in the prompt context so the AI can reference, analyze, or modify the content.
+5. You can attach both documents and images to the same message.
+
+> **Note:** Files up to 50 MB are supported. The extracted text is sent as part of the LLM prompt, so very large documents may consume significant token context.
+
+---
+
 ## Connecting to Existing Ollama in BaumDocker
 
 If you run Ollama as part of your homelab stack on a shared Docker network (e.g. `ai_backend`), set `OLLAMA_BASE_URL` to `http://ollama:11434` and add BaumAgent to that network:
