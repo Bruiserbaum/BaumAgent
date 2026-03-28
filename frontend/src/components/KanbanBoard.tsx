@@ -51,6 +51,7 @@ function TaskCard({
   const colors = STATUS_COLORS[task.status] ?? STATUS_COLORS.queued
   const isResearch = task.task_type === 'research'
   const isCoding = task.task_type === 'coding'
+  const isStructuredDoc = task.task_type === 'structured_document'
   const isNext = queuePosition === 1
 
   return (
@@ -89,14 +90,14 @@ function TaskCard({
           </span>
         )}
         <span style={{
-          backgroundColor: isResearch ? '#0d3340' : isCoding ? '#0d2d1a' : '#1e1b3a',
-          color: isResearch ? '#38bdf8' : isCoding ? '#4ade80' : '#a78bfa',
+          backgroundColor: isResearch ? '#0d3340' : isCoding ? '#0d2d1a' : isStructuredDoc ? '#2d1f00' : '#1e1b3a',
+          color: isResearch ? '#38bdf8' : isCoding ? '#4ade80' : isStructuredDoc ? '#f59e0b' : '#a78bfa',
           borderRadius: '4px', padding: '1px 6px', fontSize: '10px', fontWeight: 700,
           textTransform: 'uppercase',
-          border: `1px solid ${isResearch ? '#0369a1' : isCoding ? '#166534' : '#5b21b6'}`,
+          border: `1px solid ${isResearch ? '#0369a1' : isCoding ? '#166534' : isStructuredDoc ? '#92400e' : '#5b21b6'}`,
           flexShrink: 0,
         }}>
-          {isResearch ? 'Research' : isCoding ? 'Script' : 'Github'}
+          {isResearch ? 'Research' : isCoding ? 'Script' : isStructuredDoc ? 'Doc' : 'Github'}
         </span>
       </div>
 

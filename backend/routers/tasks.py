@@ -42,6 +42,29 @@ async def create_task(
     publish_release: str = Form("true"),
     update_docs: str = Form("if_needed"),
     update_changelog: str = Form("true"),
+    # Structured document options
+    document_mode: str = Form("plan"),
+    doc_audience: str = Form(""),
+    doc_purpose: str = Form(""),
+    doc_background: str = Form(""),
+    doc_constraints: str = Form(""),
+    doc_timeline: str = Form(""),
+    doc_budget: str = Form(""),
+    doc_stakeholders: str = Form(""),
+    doc_required_sections: str = Form(""),
+    doc_tone: str = Form("formal"),
+    doc_detail_level: str = Form("standard"),
+    doc_decision_needed: str = Form(""),
+    doc_risks_concerns: str = Form(""),
+    doc_alternatives: str = Form(""),
+    doc_assumptions: str = Form(""),
+    doc_success_measures: str = Form(""),
+    doc_title: str = Form(""),
+    doc_include_exec_summary: str = Form("true"),
+    doc_include_budget_section: str = Form("true"),
+    doc_include_timeline_section: str = Form("true"),
+    doc_include_risks_section: str = Form("true"),
+    doc_include_appendix: str = Form("false"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> Task:
@@ -59,14 +82,40 @@ async def create_task(
                 f.write(await img.read())
             image_paths.append(rel_path)
 
-    extra = json.dumps({
-        "delivery_mode": delivery_mode,
-        "build_after_change": build_after_change.lower() == "true",
-        "create_release_artifacts": create_release_artifacts.lower() == "true",
-        "publish_release": publish_release.lower() == "true",
-        "update_docs": update_docs,
-        "update_changelog": update_changelog.lower() == "true",
-    })
+    if task_type == "structured_document":
+        extra = json.dumps({
+            "document_mode": document_mode,
+            "title": doc_title,
+            "audience": doc_audience,
+            "purpose": doc_purpose,
+            "background": doc_background,
+            "constraints": doc_constraints,
+            "timeline": doc_timeline,
+            "budget": doc_budget,
+            "stakeholders": doc_stakeholders,
+            "required_sections": doc_required_sections,
+            "tone": doc_tone,
+            "detail_level": doc_detail_level,
+            "decision_needed": doc_decision_needed,
+            "risks_concerns": doc_risks_concerns,
+            "alternatives": doc_alternatives,
+            "assumptions": doc_assumptions,
+            "success_measures": doc_success_measures,
+            "include_exec_summary": doc_include_exec_summary.lower() == "true",
+            "include_budget_section": doc_include_budget_section.lower() == "true",
+            "include_timeline_section": doc_include_timeline_section.lower() == "true",
+            "include_risks_section": doc_include_risks_section.lower() == "true",
+            "include_appendix": doc_include_appendix.lower() == "true",
+        })
+    else:
+        extra = json.dumps({
+            "delivery_mode": delivery_mode,
+            "build_after_change": build_after_change.lower() == "true",
+            "create_release_artifacts": create_release_artifacts.lower() == "true",
+            "publish_release": publish_release.lower() == "true",
+            "update_docs": update_docs,
+            "update_changelog": update_changelog.lower() == "true",
+        })
 
     task = Task(
         id=task_id,

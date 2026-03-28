@@ -140,17 +140,29 @@ export default function TaskDetail({ task }: Props) {
     }
   }, [task.id, task.status, task.log])
 
-  const typeLabel = task.task_type === 'research' ? 'Research' : task.task_type === 'coding' ? 'Script' : 'Github'
+  const typeLabel = task.task_type === 'research' ? 'Research'
+    : task.task_type === 'coding' ? 'Script'
+    : task.task_type === 'structured_document' ? 'Plan/Proposal'
+    : 'Github'
   const typeBadgeStyle: React.CSSProperties = {
-    backgroundColor: task.task_type === 'research' ? '#0d3340' : task.task_type === 'coding' ? '#0d2d1a' : '#1e1b3a',
-    color: task.task_type === 'research' ? '#38bdf8' : task.task_type === 'coding' ? '#4ade80' : '#a78bfa',
+    backgroundColor: task.task_type === 'research' ? '#0d3340'
+      : task.task_type === 'coding' ? '#0d2d1a'
+      : task.task_type === 'structured_document' ? '#2d1f00'
+      : '#1e1b3a',
+    color: task.task_type === 'research' ? '#38bdf8'
+      : task.task_type === 'coding' ? '#4ade80'
+      : task.task_type === 'structured_document' ? '#f59e0b'
+      : '#a78bfa',
     borderRadius: '4px',
     padding: '2px 8px',
     fontSize: '11px',
     fontWeight: 700,
     textTransform: 'uppercase',
     letterSpacing: '0.06em',
-    border: `1px solid ${task.task_type === 'research' ? '#0369a1' : task.task_type === 'coding' ? '#166534' : '#5b21b6'}`,
+    border: `1px solid ${task.task_type === 'research' ? '#0369a1'
+      : task.task_type === 'coding' ? '#166534'
+      : task.task_type === 'structured_document' ? '#92400e'
+      : '#5b21b6'}`,
   }
 
   return (

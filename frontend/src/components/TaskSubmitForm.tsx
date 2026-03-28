@@ -94,11 +94,35 @@ declare global {
 }
 
 export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) {
-  const [taskType, setTaskType] = useState<'code' | 'research' | 'coding'>('code')
+  const [taskType, setTaskType] = useState<'code' | 'research' | 'coding' | 'structured_document'>('code')
   const [description, setDescription] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [baseBranch, setBaseBranch] = useState('main')
   const [outputFormat, setOutputFormat] = useState<'pdf' | 'docx'>('pdf')
+  // Structured document options
+  const [documentMode, setDocumentMode] = useState<'plan' | 'proposal' | 'proposal_with_plan'>('plan')
+  const [docTitle, setDocTitle] = useState('')
+  const [docAudience, setDocAudience] = useState('')
+  const [docPurpose, setDocPurpose] = useState('')
+  const [docBackground, setDocBackground] = useState('')
+  const [docConstraints, setDocConstraints] = useState('')
+  const [docTimeline, setDocTimeline] = useState('')
+  const [docBudget, setDocBudget] = useState('')
+  const [docStakeholders, setDocStakeholders] = useState('')
+  const [docRequiredSections, setDocRequiredSections] = useState('')
+  const [docTone, setDocTone] = useState<'formal' | 'leadership' | 'operational' | 'persuasive'>('formal')
+  const [docDetailLevel, setDocDetailLevel] = useState<'brief' | 'standard' | 'extensive'>('standard')
+  const [docDecisionNeeded, setDocDecisionNeeded] = useState('')
+  const [docRisksConcerns, setDocRisksConcerns] = useState('')
+  const [docAlternatives, setDocAlternatives] = useState('')
+  const [docAssumptions, setDocAssumptions] = useState('')
+  const [docSuccessMeasures, setDocSuccessMeasures] = useState('')
+  const [docIncludeExecSummary, setDocIncludeExecSummary] = useState(true)
+  const [docIncludeBudget, setDocIncludeBudget] = useState(true)
+  const [docIncludeTimeline, setDocIncludeTimeline] = useState(true)
+  const [docIncludeRisks, setDocIncludeRisks] = useState(true)
+  const [docIncludeAppendix, setDocIncludeAppendix] = useState(false)
+  const [showDocOptional, setShowDocOptional] = useState(false)
   // Github Coding options
   const [deliveryMode, setDeliveryMode] = useState<'pr_mode' | 'direct_commit' | 'plan_only'>('pr_mode')
   const [buildAfterChange, setBuildAfterChange] = useState(true)
@@ -183,7 +207,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
 
     const s = portalSettings
     let b: string, mdl: string
-    if (taskType === 'research') {
+    if (taskType === 'research' || taskType === 'structured_document') {
       b = s.research_backend || s.default_llm_backend || 'anthropic'
       mdl = s.research_model || s.default_llm_model || ''
     } else if (taskType === 'coding') {
@@ -316,8 +340,32 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
       formData.append('llm_backend', backend)
       formData.append('llm_model', model)
       formData.append('task_type', taskType)
-      if (taskType === 'research') {
+      if (taskType === 'research' || taskType === 'structured_document') {
         formData.append('output_format', outputFormat)
+      }
+      if (taskType === 'structured_document') {
+        formData.append('document_mode', documentMode)
+        formData.append('doc_title', docTitle)
+        formData.append('doc_audience', docAudience)
+        formData.append('doc_purpose', docPurpose)
+        formData.append('doc_background', docBackground)
+        formData.append('doc_constraints', docConstraints)
+        formData.append('doc_timeline', docTimeline)
+        formData.append('doc_budget', docBudget)
+        formData.append('doc_stakeholders', docStakeholders)
+        formData.append('doc_required_sections', docRequiredSections)
+        formData.append('doc_tone', docTone)
+        formData.append('doc_detail_level', docDetailLevel)
+        formData.append('doc_decision_needed', docDecisionNeeded)
+        formData.append('doc_risks_concerns', docRisksConcerns)
+        formData.append('doc_alternatives', docAlternatives)
+        formData.append('doc_assumptions', docAssumptions)
+        formData.append('doc_success_measures', docSuccessMeasures)
+        formData.append('doc_include_exec_summary', String(docIncludeExecSummary))
+        formData.append('doc_include_budget_section', String(docIncludeBudget))
+        formData.append('doc_include_timeline_section', String(docIncludeTimeline))
+        formData.append('doc_include_risks_section', String(docIncludeRisks))
+        formData.append('doc_include_appendix', String(docIncludeAppendix))
       }
       if (taskType === 'code') {
         formData.append('delivery_mode', deliveryMode)
@@ -404,6 +452,9 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
         <button type="button" style={taskType === 'research' ? tabActive : tabInactive} onClick={() => setTaskType('research')}>
           Research
         </button>
+        <button type="button" style={taskType === 'structured_document' ? tabActive : tabInactive} onClick={() => setTaskType('structured_document')}>
+          Plan / Proposal
+        </button>
       </div>
 
       {error && <div style={errorStyle}>{error}</div>}
@@ -419,6 +470,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
             placeholder={
               taskType === 'research' ? 'What would you like researched?' :
               taskType === 'coding' ? 'Describe the script or code to generate...' :
+              taskType === 'structured_document' ? 'Summarize what this document should cover, what the request is, and any key context...' :
               'Describe what the agent should do in the repository...'
             }
           />
@@ -633,16 +685,136 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
         {taskType === 'research' && (
           <>
             <label style={label}>Output Format</label>
-            <select
-              style={selectStyle}
-              value={outputFormat}
-              onChange={e => setOutputFormat(e.target.value as 'pdf' | 'docx')}
-            >
+            <select style={selectStyle} value={outputFormat} onChange={e => setOutputFormat(e.target.value as 'pdf' | 'docx')}>
               <option value="pdf">PDF</option>
               <option value="docx">Word (.docx)</option>
             </select>
           </>
         )}
+
+        {/* Structured Document fields */}
+        {taskType === 'structured_document' && (() => {
+          const secLabel: React.CSSProperties = { ...label, color: '#7dd3fc', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '10px', marginTop: '4px' }
+          const halfGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }
+          const checkRow = (lbl: string, val: boolean, set: (v: boolean) => void) => (
+            <label key={lbl} style={{ display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer', fontSize: '13px', color: '#94a3b8', userSelect: 'none' }}>
+              <input type="checkbox" checked={val} onChange={e => set(e.target.checked)} style={{ accentColor: '#f59e0b', width: '14px', height: '14px', cursor: 'pointer' }} />
+              {lbl}
+            </label>
+          )
+          return (
+            <>
+              {/* Core */}
+              <div style={secLabel}>Document Setup</div>
+              <label style={label}>Document Mode</label>
+              <select style={selectStyle} value={documentMode} onChange={e => setDocumentMode(e.target.value as typeof documentMode)}>
+                <option value="plan">Plan (how we will do it)</option>
+                <option value="proposal">Proposal (why we should do it)</option>
+                <option value="proposal_with_plan">Proposal + Plan (why and how)</option>
+              </select>
+
+              <label style={label}>Working Title (optional)</label>
+              <input style={input} value={docTitle} onChange={e => setDocTitle(e.target.value)} placeholder="e.g. Q3 Infrastructure Upgrade Plan" />
+
+              <div style={halfGrid}>
+                <div>
+                  <label style={label}>Target Audience</label>
+                  <input style={input} value={docAudience} onChange={e => setDocAudience(e.target.value)} placeholder="e.g. Leadership, Finance team" />
+                </div>
+                <div>
+                  <label style={label}>Tone</label>
+                  <select style={selectStyle} value={docTone} onChange={e => setDocTone(e.target.value as typeof docTone)}>
+                    <option value="formal">Formal / Professional</option>
+                    <option value="leadership">Leadership / Executive</option>
+                    <option value="operational">Operational / Practical</option>
+                    <option value="persuasive">Persuasive / Business Case</option>
+                  </select>
+                </div>
+              </div>
+
+              <div style={halfGrid}>
+                <div>
+                  <label style={label}>Detail Level</label>
+                  <select style={selectStyle} value={docDetailLevel} onChange={e => setDocDetailLevel(e.target.value as typeof docDetailLevel)}>
+                    <option value="brief">Brief</option>
+                    <option value="standard">Standard</option>
+                    <option value="extensive">Extensive</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={label}>Output Format</label>
+                  <select style={selectStyle} value={outputFormat} onChange={e => setOutputFormat(e.target.value as 'pdf' | 'docx')}>
+                    <option value="pdf">PDF</option>
+                    <option value="docx">Word (.docx)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Context */}
+              <div style={secLabel}>Context</div>
+              <label style={label}>Objective / Purpose</label>
+              <textarea style={{ ...textarea, marginBottom: '14px' }} value={docPurpose} onChange={e => setDocPurpose(e.target.value)} placeholder="What is the goal of this document? What decision or outcome is needed?" rows={2} />
+
+              <label style={label}>Background / Current State</label>
+              <textarea style={{ ...textarea, marginBottom: '14px' }} value={docBackground} onChange={e => setDocBackground(e.target.value)} placeholder="What is the current situation? What led to this request?" rows={3} />
+
+              <div style={halfGrid}>
+                <div>
+                  <label style={label}>Timeline / Target Dates</label>
+                  <input style={input} value={docTimeline} onChange={e => setDocTimeline(e.target.value)} placeholder="e.g. Go-live by Q4, deadline Oct 1" />
+                </div>
+                <div>
+                  <label style={label}>Stakeholders</label>
+                  <input style={input} value={docStakeholders} onChange={e => setDocStakeholders(e.target.value)} placeholder="e.g. IT, Finance, HR, Vendor" />
+                </div>
+              </div>
+
+              <label style={label}>Budget / Cost Information</label>
+              <textarea style={{ ...textarea, marginBottom: '14px' }} value={docBudget} onChange={e => setDocBudget(e.target.value)} placeholder="Known costs, budget limits, funding sources, cost estimates..." rows={2} />
+
+              <label style={label}>Constraints</label>
+              <textarea style={{ ...textarea, marginBottom: '14px' }} value={docConstraints} onChange={e => setDocConstraints(e.target.value)} placeholder="Technical, resource, policy, time, or scope constraints..." rows={2} />
+
+              {/* Optional fields — collapsed by default */}
+              <button type="button" onClick={() => setShowDocOptional(v => !v)} style={{ background: 'none', border: 'none', color: '#475569', fontSize: '12px', cursor: 'pointer', padding: '0 0 10px', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '10px' }}>{showDocOptional ? '▼' : '▶'}</span>
+                {showDocOptional ? 'Hide' : 'Show'} optional fields (decision needed, risks, alternatives, assumptions, success measures, required sections)
+              </button>
+
+              {showDocOptional && (
+                <>
+                  <label style={label}>Decision Needed</label>
+                  <input style={input} value={docDecisionNeeded} onChange={e => setDocDecisionNeeded(e.target.value)} placeholder="What is the specific ask or decision required?" />
+
+                  <label style={label}>Known Risks / Concerns</label>
+                  <textarea style={{ ...textarea, marginBottom: '14px' }} value={docRisksConcerns} onChange={e => setDocRisksConcerns(e.target.value)} placeholder="Any known risks, concerns, or blockers to address..." rows={2} />
+
+                  <label style={label}>Alternatives Considered</label>
+                  <textarea style={{ ...textarea, marginBottom: '14px' }} value={docAlternatives} onChange={e => setDocAlternatives(e.target.value)} placeholder="Other options that were considered and why this was selected..." rows={2} />
+
+                  <label style={label}>Assumptions</label>
+                  <textarea style={{ ...textarea, marginBottom: '14px' }} value={docAssumptions} onChange={e => setDocAssumptions(e.target.value)} placeholder="Known assumptions this document is based on..." rows={2} />
+
+                  <label style={label}>Success Measures</label>
+                  <input style={input} value={docSuccessMeasures} onChange={e => setDocSuccessMeasures(e.target.value)} placeholder="How will success be measured? KPIs, milestones, outcomes..." />
+
+                  <label style={label}>Required Sections (override)</label>
+                  <input style={input} value={docRequiredSections} onChange={e => setDocRequiredSections(e.target.value)} placeholder="Optional: list specific sections you want included" />
+                </>
+              )}
+
+              {/* Section toggles */}
+              <div style={secLabel}>Section Toggles</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', marginBottom: '14px', backgroundColor: '#0f172a', border: '1px solid #1e3a5f', borderRadius: '6px', padding: '12px' }}>
+                {checkRow('Executive Summary', docIncludeExecSummary, setDocIncludeExecSummary)}
+                {checkRow('Budget / Cost Section', docIncludeBudget, setDocIncludeBudget)}
+                {checkRow('Timeline / Phases', docIncludeTimeline, setDocIncludeTimeline)}
+                {checkRow('Risks & Mitigation', docIncludeRisks, setDocIncludeRisks)}
+                {checkRow('Appendix', docIncludeAppendix, setDocIncludeAppendix)}
+              </div>
+            </>
+          )
+        })()}
 
         <label style={label}>LLM Backend</label>
         <select style={selectStyle} value={backend} onChange={e => setBackend(e.target.value)}>
@@ -689,6 +861,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
             {loading ? 'Submitting...' :
             taskType === 'research' ? 'Run Research' :
             taskType === 'coding' ? 'Generate Script' :
+            taskType === 'structured_document' ? 'Generate Document' :
             'Run Agent'}
           </button>
         </div>

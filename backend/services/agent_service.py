@@ -127,6 +127,195 @@ def _build_code_system_prompt(opts: dict) -> str:
 
     return "\n".join(parts)
 
+def _build_structured_doc_system_prompt(opts: dict) -> str:
+    """Build a dynamic system prompt for plan/proposal document generation."""
+    mode = opts.get("document_mode", "plan")
+    audience = opts.get("audience", "internal team")
+    tone = opts.get("tone", "formal")
+    detail = opts.get("detail_level", "standard")
+    include_exec = opts.get("include_exec_summary", True)
+    include_budget = opts.get("include_budget_section", True)
+    include_timeline = opts.get("include_timeline_section", True)
+    include_risks = opts.get("include_risks_section", True)
+    include_appendix = opts.get("include_appendix", False)
+
+    mode_label = {
+        "plan": "Implementation Plan",
+        "proposal": "Proposal",
+        "proposal_with_plan": "Proposal with Implementation Plan",
+    }.get(mode, "Plan")
+
+    # Build required section list based on mode and toggles
+    if mode == "plan":
+        sections = ["Overview", "Objective", "Scope", "Current State / Background", "Proposed Approach"]
+        if include_timeline:
+            sections.append("Timeline / Phases")
+        sections.append("Roles and Responsibilities")
+        if include_budget:
+            sections.append("Budget / Cost Estimate")
+        if include_risks:
+            sections.append("Risks and Mitigation")
+        sections += ["Success Measures", "Next Steps"]
+    elif mode == "proposal":
+        sections = (["Executive Summary"] if include_exec else []) + [
+            "Problem or Need", "Proposed Solution", "Expected Value / Why This Matters"]
+        if include_timeline:
+            sections.append("Implementation Overview")
+        if include_budget:
+            sections.append("Estimated Cost / Funding Request")
+        if include_risks:
+            sections.append("Risks and Considerations")
+        sections += ["Decision Needed", "Conclusion"]
+    else:  # proposal_with_plan
+        sections = (["Executive Summary"] if include_exec else []) + [
+            "Problem or Need", "Proposed Solution", "Expected Value / Why This Matters",
+            "Objective", "Scope"]
+        if include_timeline:
+            sections.append("Timeline / Phases")
+        sections.append("Roles and Responsibilities")
+        if include_budget:
+            sections.append("Budget / Cost Estimate")
+        if include_risks:
+            sections.append("Risks and Mitigation")
+        sections += ["Success Measures", "Decision Needed", "Next Steps"]
+
+    if include_appendix:
+        sections.append("Appendix")
+
+    sections_list = "\n".join(f"  {i+1}. {s}" for i, s in enumerate(sections))
+
+    tone_desc = {
+        "formal": "formal and professional",
+        "leadership": "executive-facing — clear, decisive, strategic-level; avoid jargon",
+        "operational": "operational — direct, practical, action-oriented",
+        "persuasive": "persuasive — compelling, benefit-focused, builds a clear case for action",
+    }.get(tone, "formal and professional")
+
+    detail_desc = {
+        "brief": "concise (1–2 paragraphs per section, focus on essentials only)",
+        "standard": "standard depth (3–5 paragraphs per major section, thorough but not exhaustive)",
+        "extensive": "extensive (full narrative depth — elaborate on all implications, include full "
+                     "justification for every recommendation, leave no question unanswered)",
+    }.get(detail, "standard depth")
+
+    mode_instruction = {
+        "plan": (
+            "You are writing a Plan. Focus entirely on execution: how the work will be structured, "
+            "who does what, what the phases and milestones are, how resources are allocated, "
+            "and how risks will be managed. The reader should finish this document knowing exactly "
+            "how the work will be carried out."
+        ),
+        "proposal": (
+            "You are writing a Proposal. Focus on the business case: what problem exists, why it matters, "
+            "what the proposed solution is, what the expected value is, and what decision or funding is being requested. "
+            "The reader should finish this document knowing exactly why they should approve or fund this."
+        ),
+        "proposal_with_plan": (
+            "You are writing a combined Proposal and Implementation Plan. First make the case for why this should be "
+            "approved (the proposal sections), then provide the execution detail (the plan sections). "
+            "Both halves must be fully developed — not abbreviated."
+        ),
+    }.get(mode, "")
+
+    return (
+        f"You are a planning and proposal-writing agent. Your role is to transform user-provided "
+        f"notes, context, and requirements into a polished, professional {mode_label} document.\n\n"
+
+        f"{mode_instruction}\n\n"
+
+        f"TARGET AUDIENCE: {audience}\n"
+        f"TONE: {tone_desc}\n"
+        f"DETAIL LEVEL: {detail_desc}\n\n"
+
+        f"REQUIRED SECTIONS (produce in this order):\n{sections_list}\n\n"
+
+        "PROCESS\n"
+        "Step 1 — Analyze the inputs:\n"
+        "  Extract all goals, constraints, dates, dependencies, stakeholder groups, cost/budget items, "
+        "and assumptions from the provided context. Note what each required section will need to address.\n\n"
+
+        "Step 2 — Infer document shape:\n"
+        "  Decide if any sections need sub-sections given complexity. Identify where tables are more "
+        "useful than prose (budget line items, phase timelines, risk registers, roles matrix).\n\n"
+
+        "Step 3 — Draft every section:\n"
+        "  Write full prose paragraphs — not bulleted summaries. Add logical sequencing, rationale, "
+        "practical implications, and measurable outcomes where relevant.\n"
+        "  For budget and timeline sections, format as a table using plain text with pipe separators:\n"
+        "  | Phase | Duration | Deliverables | Owner |\n"
+        "  | Budget Item | Estimated Cost | Notes |\n\n"
+
+        "Step 4 — Review before finishing:\n"
+        "  Confirm all required sections are present and fully written. Check tone consistency. "
+        "Verify no unsupported factual claims have been introduced.\n\n"
+
+        "INTEGRITY RULES — NON-NEGOTIABLE:\n"
+        "  - Expand and organize the user-provided information aggressively into well-structured prose.\n"
+        "  - DO NOT invent numbers, vendor capabilities, specific costs, dates, policies, or approvals "
+        "that are not present in the user's input.\n"
+        "  - Where information is missing, use clearly labeled placeholders: [TBD], "
+        "[Assumption: describe assumption here], or [Requires Confirmation].\n"
+        "  - CORRECT: 'Based on the timeline provided, a phased rollout would reduce implementation risk.'\n"
+        "  - INCORRECT: 'This will save $42,000 annually' when no such figure was provided.\n\n"
+
+        "OUTPUT:\n"
+        "Call finish() with:\n"
+        "  - title: the document title as a string\n"
+        "  - sections: an ordered list of {heading, content} objects\n"
+        "    Each content field must be full prose paragraphs. Tables are embedded in content using "
+        "plain pipe-separated rows.\n"
+        "Do not call finish() until every required section is fully written."
+    )
+
+
+STRUCTURED_DOC_TOOL_DEFINITIONS: list = [
+    {
+        "name": "web_search",
+        "description": "Search the web for context, benchmarks, templates, or supporting information.",
+        "parameters": {
+            "type": "object",
+            "properties": {"query": {"type": "string", "description": "Search query."}},
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "read_url",
+        "description": "Fetch and read the content of a URL for additional context.",
+        "parameters": {
+            "type": "object",
+            "properties": {"url": {"type": "string", "description": "URL to fetch."}},
+            "required": ["url"],
+        },
+    },
+    {
+        "name": "finish",
+        "description": "Deliver the completed document. Call only when all required sections are fully written.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string",
+                    "description": "The full document title.",
+                },
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "heading": {"type": "string", "description": "Section heading."},
+                            "content": {"type": "string", "description": "Full prose content of this section."},
+                        },
+                        "required": ["heading", "content"],
+                    },
+                    "description": "Ordered list of document sections with full prose content.",
+                },
+            },
+            "required": ["title", "sections"],
+        },
+    },
+]
+
+
 CODING_SYSTEM_PROMPT = (
     "You are BaumAgent, an autonomous AI script and code generator.\n\n"
 
@@ -458,6 +647,7 @@ class AgentService:
         self._finished: bool = False
         self._research_result: dict | None = None
         self._coding_result: dict | None = None
+        self._structured_doc_result: dict | None = None
         self._collected_image_urls: list[str] = []
 
     # ------------------------------------------------------------------
@@ -604,6 +794,12 @@ class AgentService:
         self._log(f"[finish] Coding complete: {main_file}")
         return "Scripts ready."
 
+    def _tool_finish_structured_document(self, title: str, sections: list) -> str:
+        self._finished = True
+        self._structured_doc_result = {"title": title, "sections": sections}
+        self._log(f"[finish] Document complete: {title} ({len(sections)} sections)")
+        return "Document complete."
+
     # ------------------------------------------------------------------
     # Tool dispatcher
     # ------------------------------------------------------------------
@@ -638,6 +834,11 @@ class AgentService:
                 return self._tool_finish_coding(
                     summary=args.get("summary", ""),
                     main_file=args.get("main_file", ""),
+                )
+            elif task_type == "structured_document":
+                return self._tool_finish_structured_document(
+                    title=args.get("title", "Document"),
+                    sections=args.get("sections", []),
                 )
             else:
                 return self._tool_finish_code(args.get("summary", ""))
@@ -694,6 +895,8 @@ class AgentService:
             await self._run_research(task, db, llm_client)
         elif task_type == "coding":
             await self._run_coding(task, db, llm_client)
+        elif task_type == "structured_document":
+            await self._run_structured_document(task, db, llm_client)
         else:
             await self._run_code(task, db, settings, llm_client)
 
@@ -766,6 +969,115 @@ class AgentService:
             self._log("WARNING: LLM did not call finish() — no research result to generate document from.")
 
         # Upload to SMB share if configured by user
+        if task.output_file:
+            try:
+                from models.user import User as UserModel
+                from routers.settings import _get_user_settings
+                _smb_user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
+                if _smb_user:
+                    _smb_user_cfg = _get_user_settings(_smb_user)
+                    smb_cfg = _smb_user_cfg.get("smb", {})
+                    if smb_cfg.get("enabled"):
+                        from services.smb_service import upload_to_smb
+                        unc = upload_to_smb(task.output_file, smb_cfg)
+                        self._log(f"[smb] Uploaded to {unc}")
+            except Exception as _smb_err:
+                self._log(f"[smb] Upload failed (non-fatal): {_smb_err}")
+
+        task.status = TaskStatus.COMPLETE
+        task.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        self._log("Done.")
+
+    async def _run_structured_document(self, task, db, llm_client) -> None:
+        """Run a structured document task: plan or proposal generation."""
+        opts: dict = json.loads(task.extra_data or "{}")
+        system_prompt = _build_structured_doc_system_prompt(opts)
+
+        # Build rich initial message from all intake fields
+        mode = opts.get("document_mode", "plan")
+        mode_label = {"plan": "Implementation Plan", "proposal": "Proposal",
+                      "proposal_with_plan": "Proposal with Implementation Plan"}.get(mode, "Plan")
+
+        lines = [f"Document Request: {mode_label}\n"]
+        lines.append(f"## Summary / Purpose\n{task.description}")
+
+        for key, label in [
+            ("title",            "Working Title"),
+            ("audience",         "Target Audience"),
+            ("purpose",          "Objective / Purpose"),
+            ("background",       "Background / Current State"),
+            ("constraints",      "Constraints"),
+            ("timeline",         "Timeline / Target Dates"),
+            ("budget",           "Budget / Cost Information"),
+            ("stakeholders",     "Stakeholders"),
+            ("required_sections","Required Sections (user-specified)"),
+            ("decision_needed",  "Decision Needed"),
+            ("risks_concerns",   "Known Risks / Concerns"),
+            ("alternatives",     "Alternatives Considered"),
+            ("assumptions",      "Assumptions"),
+            ("success_measures", "Success Measures"),
+        ]:
+            val = str(opts.get(key, "")).strip()
+            if val:
+                lines.append(f"\n## {label}\n{val}")
+
+        lines.append(
+            "\n---\n"
+            "Using all the information above, produce the complete document following your instructions. "
+            "Write every required section with full prose. Do not call finish() until all sections are complete."
+        )
+
+        initial_content = self._build_initial_message("\n".join(lines))
+        self._finished = False
+        self._structured_doc_result = None
+
+        await llm_client.run_agent_loop(
+            system=system_prompt,
+            initial_message=initial_content,
+            tools=STRUCTURED_DOC_TOOL_DEFINITIONS,
+            tool_executor=self.tool_executor,
+            log_fn=self._log,
+        )
+
+        if self._structured_doc_result:
+            from services.research_service import generate_document
+            output_format = getattr(task, "output_format", None) or "pdf"
+            output_dir = f"/app/data/outputs/{task.id}"
+            self._log(f"Generating {output_format.upper()} document ...")
+            try:
+                try:
+                    from models.user import User as UserModel
+                    from routers.settings import _get_user_settings, get_doc_format as _get_doc_fmt
+                    _user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
+                    _user_cfg = _get_user_settings(_user) if _user else None
+                    _fmt = _get_doc_fmt(_user_cfg)
+                except Exception:
+                    _fmt = get_doc_format()
+                output_file = generate_document(
+                    title=self._structured_doc_result["title"],
+                    sections=self._structured_doc_result["sections"],
+                    sources=[],
+                    output_format=output_format,
+                    output_dir=output_dir,
+                    fmt=_fmt,
+                    image_urls=[],
+                )
+                task.output_file = output_file
+                db.commit()
+                if os.path.exists(output_file):
+                    size = os.path.getsize(output_file)
+                    self._log(f"Document saved: {output_file} ({size} bytes)")
+                else:
+                    self._log(f"[ERROR] generate_document returned path but file does not exist: {output_file}")
+                    task.output_file = None
+                    db.commit()
+            except Exception as _doc_err:
+                self._log(f"[ERROR] Document generation failed: {_doc_err}\n{traceback.format_exc()}")
+        else:
+            self._log("WARNING: LLM did not call finish() — no document result.")
+
+        # SMB upload if configured
         if task.output_file:
             try:
                 from models.user import User as UserModel
