@@ -50,14 +50,47 @@ const META: Record<string, ModelMeta> = {
   'o1-mini':                     { label: 'o1 Mini',                  category: 'Reasoning', cost: 'Moderate'  },
 }
 
+// ── Ollama pattern classification ──────────────────────────────────────────
+// Patterns checked in order — first match wins.
+// Cost is always "Local" for Ollama. Size tags like :1b/:3b = Fast, :70b+ = slower.
+
+const OLLAMA_CODING_PATTERNS = [
+  'coder', 'code', 'codellama', 'starcoder', 'deepseek-coder',
+  'qwen2.5-coder', 'qwen-coder', 'wizard-coder', 'phind',
+]
+const OLLAMA_REASONING_PATTERNS = [
+  'deepseek-r', 'deepseek-v3', 'qwq', 'r1', 'thinker', 'reflect',
+]
+const OLLAMA_RESEARCH_PATTERNS = [
+  'mixtral', 'command-r', 'solar', 'yi-', 'falcon',
+]
+// Models known to be small/fast: phi, gemma 2b/mini, tiny variants
+const OLLAMA_FAST_PATTERNS = [
+  'phi', 'tinyllama', 'smollm', 'gemma2:2b', 'gemma3:1b', 'gemma3:4b',
+  'llama3.2:1b', 'llama3.2:3b', ':1b', ':3b',
+]
+
+function classifyOllama(modelId: string): ModelMeta {
+  const id = modelId.toLowerCase()
+
+  const isPattern = (patterns: string[]) => patterns.some(p => id.includes(p))
+
+  let category = 'General'
+  if (isPattern(OLLAMA_FAST_PATTERNS))     category = 'Fast'
+  else if (isPattern(OLLAMA_CODING_PATTERNS))   category = 'Coding'
+  else if (isPattern(OLLAMA_REASONING_PATTERNS)) category = 'Reasoning'
+  else if (isPattern(OLLAMA_RESEARCH_PATTERNS))  category = 'Research'
+
+  return { label: modelId, category, cost: 'Local' }
+}
+
 /**
  * Returns a display label for a model option.
- * For Ollama models (backend === 'ollama'), just returns the model ID.
  * Example: "Claude Sonnet 4.6 · Coding · Moderate"
+ * Ollama models are classified by name pattern with cost always "Local".
  */
 export function modelOptionLabel(modelId: string, backend?: string): string {
-  if (backend === 'ollama') return modelId
-  const meta = META[modelId]
+  const meta = backend === 'ollama' ? classifyOllama(modelId) : META[modelId]
   if (!meta) return modelId
   return `${meta.label}  ·  ${meta.category}  ·  ${meta.cost}`
 }
