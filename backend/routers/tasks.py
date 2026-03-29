@@ -38,6 +38,8 @@ async def create_task(
     # Fallback option
     fallback_to_anthropic: str = Form("false"),
     fallback_anthropic_model: str = Form("claude-sonnet-4-6"),
+    # Research options
+    research_style: str = Form("standard"),
     # Github Coding options
     delivery_mode: str = Form("pr_mode"),
     build_after_change: str = Form("true"),
@@ -115,6 +117,11 @@ async def create_task(
             "include_timeline_section": doc_include_timeline_section.lower() == "true",
             "include_risks_section": doc_include_risks_section.lower() == "true",
             "include_appendix": doc_include_appendix.lower() == "true",
+        })
+    elif task_type == "research":
+        extra = json.dumps({
+            **fallback_fields,
+            "research_style": research_style,
         })
     else:
         extra = json.dumps({

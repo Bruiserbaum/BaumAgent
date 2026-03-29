@@ -101,6 +101,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
   const [repoUrl, setRepoUrl] = useState('')
   const [baseBranch, setBaseBranch] = useState('main')
   const [outputFormat, setOutputFormat] = useState<'pdf' | 'docx'>('pdf')
+  const [researchStyle, setResearchStyle] = useState<'standard' | 'deep_study'>('standard')
   // Structured document options
   const [documentMode, setDocumentMode] = useState<'plan' | 'proposal' | 'proposal_with_plan'>('plan')
   const [docTitle, setDocTitle] = useState('')
@@ -347,6 +348,9 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
       formData.append('task_type', taskType)
       if (taskType === 'research' || taskType === 'structured_document') {
         formData.append('output_format', outputFormat)
+      }
+      if (taskType === 'research') {
+        formData.append('research_style', researchStyle)
       }
       if (taskType === 'structured_document') {
         formData.append('document_mode', documentMode)
@@ -691,7 +695,13 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
         {/* Research-only fields */}
         {taskType === 'research' && (
           <>
-            <label style={label}>Output Format</label>
+            <label style={label}>Study Style</label>
+            <select style={selectStyle} value={researchStyle} onChange={e => setResearchStyle(e.target.value as 'standard' | 'deep_study')}>
+              <option value="standard">Standard Report — analyst briefing with executive summary</option>
+              <option value="deep_study">Deep Study — authoritative, source-heavy, section-by-section analysis with direct answers, primary quotes, and straight conclusions</option>
+            </select>
+
+            <label style={{ ...label, marginTop: '10px' }}>Output Format</label>
             <select style={selectStyle} value={outputFormat} onChange={e => setOutputFormat(e.target.value as 'pdf' | 'docx')}>
               <option value="pdf">PDF</option>
               <option value="docx">Word (.docx)</option>
