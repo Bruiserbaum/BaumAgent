@@ -13,7 +13,21 @@ from models.user import User
 
 router = APIRouter(tags=["settings"])
 
-ANTHROPIC_MODELS = ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
+ANTHROPIC_MODELS = [
+    # Claude 4 series
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+    # Claude 3.7 series
+    "claude-3-7-sonnet-20250219",
+    # Claude 3.5 series
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-20241022",
+    # Claude 3 series
+    "claude-3-opus-20240229",
+    "claude-3-sonnet-20240229",
+    "claude-3-haiku-20240307",
+]
 
 # Fallback used when the OpenAI key is absent or the models endpoint fails
 OPENAI_MODELS_FALLBACK = [

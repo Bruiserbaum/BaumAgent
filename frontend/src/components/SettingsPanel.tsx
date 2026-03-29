@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { api, PortalSettings, DocFormatSettings, SMBSettings, ModelsResponse } from '../api/client'
+import { modelOptionLabel } from '../api/modelMeta'
 
 interface Props {
   onClose: () => void
@@ -325,7 +326,7 @@ export default function SettingsPanel({ onClose }: Props) {
                   onChange={e => setTop('default_llm_model', e.target.value)}
                 >
                   {(models[settings.default_llm_backend as keyof ModelsResponse] ?? []).map(m => (
-                    <option key={m} value={m}>{m}</option>
+                    <option key={m} value={m}>{modelOptionLabel(m, settings.default_llm_backend)}</option>
                   ))}
                 </select>
               )}
@@ -385,7 +386,7 @@ export default function SettingsPanel({ onClose }: Props) {
                       >
                         <option value="">— global default —</option>
                         {modelList.map(m => (
-                          <option key={m} value={m}>{m}</option>
+                          <option key={m} value={m}>{modelOptionLabel(m, effectiveBackend)}</option>
                         ))}
                       </select>
                     )}

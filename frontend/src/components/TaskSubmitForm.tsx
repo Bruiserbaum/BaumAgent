@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, FormEvent, DragEvent, ClipboardEvent } from 'react'
 import { api, ModelsResponse, Project, GithubRepo, PortalSettings } from '../api/client'
+import { modelOptionLabel } from '../api/modelMeta'
 
 interface Props {
   onClose: () => void
@@ -840,7 +841,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
             <option value="">No models available</option>
           )}
           {modelOptions.map(m => (
-            <option key={m} value={m}>{m}</option>
+            <option key={m} value={m}>{modelOptionLabel(m, backend)}</option>
           ))}
         </select>
 
@@ -866,9 +867,9 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
                   value={fallbackAnthropicModel}
                   onChange={e => setFallbackAnthropicModel(e.target.value)}
                 >
-                  <option value="claude-sonnet-4-6">claude-sonnet-4-6 (recommended)</option>
-                  <option value="claude-opus-4-6">claude-opus-4-6 (most capable)</option>
-                  <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fastest)</option>
+                  <option value="claude-sonnet-4-6">{modelOptionLabel('claude-sonnet-4-6', 'anthropic')} (recommended)</option>
+                  <option value="claude-opus-4-6">{modelOptionLabel('claude-opus-4-6', 'anthropic')} (most capable)</option>
+                  <option value="claude-haiku-4-5-20251001">{modelOptionLabel('claude-haiku-4-5-20251001', 'anthropic')} (fastest)</option>
                 </select>
                 <div style={{ fontSize: '11px', color: '#475569', marginTop: '5px' }}>
                   Triggers if the primary model raises an error or fails to produce output after the full agent loop.

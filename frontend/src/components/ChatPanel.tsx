@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { api, ModelsResponse, DocumentAttachment } from '../api/client'
+import { modelOptionLabel } from '../api/modelMeta'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -255,7 +256,7 @@ export default function ChatPanel({ messages, setMessages, isMobile, onClose }: 
             disabled={modelOptions.length === 0}
           >
             {modelOptions.length === 0 && <option value="">No models available</option>}
-            {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
+            {modelOptions.map(m => <option key={m} value={m}>{modelOptionLabel(m, backend)}</option>)}
           </select>
         )}
       </div>
