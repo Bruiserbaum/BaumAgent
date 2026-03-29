@@ -1,6 +1,12 @@
 # BaumAgent
 
-A self-hosted AI agent portal that autonomously completes software engineering tasks on GitHub repositories. Submit a task, pick an LLM backend, and BaumAgent will clone the repo, make changes, push a branch, and open a pull request — all while streaming live logs to the UI.
+A self-hosted AI agent portal that autonomously completes software engineering, research, and document tasks. Submit a task, pick an LLM backend, and BaumAgent will get to work — cloning repos, writing code, opening pull requests, conducting deep research, or drafting structured documents — all while streaming live logs to the UI.
+
+---
+
+## Screenshot
+
+![BaumAgent](docs/screenshots/preview.png)
 
 ---
 
@@ -8,7 +14,6 @@ A self-hosted AI agent portal that autonomously completes software engineering t
 
 ### Prerequisites
 - Docker + Docker Compose
-- Node.js 18+ (for building the frontend — only needed once)
 - Git
 
 ### 1. Clone the repo
@@ -67,8 +72,6 @@ You should see `Uvicorn running on http://0.0.0.0:8000` from the api container a
 
 ```bash
 git pull
-cd frontend && npm run build && cd ..
-docker compose pull
 docker compose up -d --build
 ```
 
@@ -107,68 +110,106 @@ docker compose up -d --build
 
 ---
 
-## Supported LLM Backends
+## Task Types
 
-| Backend | Models |
-|---|---|
-| **Anthropic** | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5-20251001 |
-| **OpenAI** | gpt-4o, gpt-4o-mini, o1, o3-mini |
-| **Ollama** | Any model loaded in your Ollama instance (fetched live) |
+### GitHub Code Task
+The agent clones a repository, implements the requested change, pushes a branch, and opens a pull request.
+
+Options:
+- **Delivery mode** — PR (default) or direct push
+- **Build after change** — run the project's build/test step before pushing
+- **Create release artifacts** — tag and upload a release after a successful build
+- **Update docs / changelog** — keep documentation in sync automatically
+
+### Research
+The agent uses web search to research a topic and produces a structured report.
+
+- **Standard** — balanced overview with sources
+- **Deep Study** — authoritative, direct-answer format with primary source quotes, contrast analysis, and a straight answer conclusion
+
+### Structured Document
+The agent drafts a formal document (plan, proposal, RFC, report, spec) using a guided template.
+
+Configurable sections: audience, purpose, background, constraints, timeline, budget, stakeholders, risks, alternatives, success measures, executive summary, and appendix.
 
 ---
 
-## AI Chat — Document Attachments
+## Supported LLM Backends
 
-The AI Chat panel supports attaching documents so the AI can read and work with their contents. Click the 📎 paperclip button next to the message input to attach files.
+### Anthropic
+| Model | Category | Cost |
+|-------|----------|------|
+| claude-opus-4-6 | General | High |
+| claude-sonnet-4-6 | General | Moderate |
+| claude-haiku-4-5 | General | Low |
+| claude-3-7-sonnet-20250219 | General | Moderate |
+| claude-3-5-sonnet-20241022 | General | Moderate |
+| claude-3-5-haiku-20241022 | General | Low |
+| claude-3-opus-20240229 | General | High |
+| claude-3-sonnet-20240229 | General | Moderate |
+| claude-3-haiku-20240307 | General | Low |
 
-### Supported file types
+### OpenAI
+| Model | Category | Cost |
+|-------|----------|------|
+| gpt-4o | General | Moderate |
+| gpt-4o-mini | General | Low |
+| o1 | Reasoning | High |
+| o3-mini | Reasoning | Low |
 
-| Format | Extensions | Library |
-|--------|-----------|---------|
-| **PDF** | `.pdf` | PyPDF2 |
-| **Word** | `.docx` | python-docx |
-| **Excel** | `.xlsx`, `.xls` | openpyxl |
-| **CSV** | `.csv` | Python stdlib |
+### Ollama (self-hosted)
+Any model loaded in your Ollama instance is available — fetched live from the API. Models are automatically classified by name pattern (coding, reasoning, fast, general).
 
-### How it works
+---
 
-1. Click the 📎 button and select one or more files (or attach multiple files across multiple clicks).
-2. Each file is uploaded to the backend, which extracts the text content and returns it.
-3. Attached files appear as badges below the input area showing filename and character count.
-4. When you send a message, the extracted document text is included in the prompt context so the AI can reference, analyze, or modify the content.
-5. You can attach both documents and images to the same message.
+## Projects
 
-> **Note:** Files up to 50 MB are supported. The extracted text is sent as part of the LLM prompt, so very large documents may consume significant token context.
+Tasks can be grouped into **Projects** — colour-coded kanban columns on the dashboard. Assign tasks to a project when creating them, or reassign them afterward from the task card.
+
+---
+
+## AI Chat
+
+The sidebar AI Chat panel lets you converse directly with any configured LLM. Supports:
+- **Document attachments** — PDF, Word (.docx), Excel (.xlsx/.xls), CSV
+- **Image attachments** — screenshots or diagrams alongside your message
+- **Project context** — pin a project to keep conversations organised
+
+### Supported attachment formats
+
+| Format | Extensions |
+|--------|-----------|
+| PDF | `.pdf` |
+| Word | `.docx` |
+| Excel | `.xlsx`, `.xls` |
+| CSV | `.csv` |
+| Images | `.png`, `.jpg`, `.webp`, `.gif` |
 
 ---
 
 ## Connecting to Existing Ollama in BaumDocker
 
-If you run Ollama as part of your homelab stack on a shared Docker network (e.g. `ai_backend`), set `OLLAMA_BASE_URL` to `http://ollama:11434` and add BaumAgent to that network:
+If you run Ollama as part of your homelab stack on a shared Docker network (e.g. `ai_backend`), set `OLLAMA_BASE_URL` to `http://ollama:11434` and join BaumAgent to that network:
 
 ```yaml
-# In docker-compose.yml, under networks:
 networks:
   baumagent:
     name: baumagent
   ai_backend:
     external: true
-
-# And add to the api and worker services:
-    networks:
-      - baumagent
-      - ai_backend
 ```
+
+Add both networks to the `api` and `worker` services in `docker-compose.yml`.
 
 ---
 
-## Authentik Forward Auth (NPM + Authentik)
+## Authentik Forward Auth
 
-BaumAgent does not implement authentication itself — protect it with Nginx Proxy Manager and Authentik forward auth as a single application proxy, the same pattern used for other homelab services. No changes to BaumAgent are required:
+BaumAgent does not implement authentication itself — protect it with Nginx Proxy Manager and Authentik forward auth:
 
-1. In Authentik, create a **Proxy Provider** (Forward Auth Single Application) for `http://baumagent.yourdomain.com`.
+1. In Authentik, create a **Proxy Provider** (Forward Auth Single Application) for your BaumAgent domain.
 2. Create an **Application** pointing to that provider.
-3. In NPM, add a proxy host for `baumagent.yourdomain.com` → `baumagent-api:8000`, then add the Authentik forward auth advanced config snippet to the proxy host.
+3. In NPM, add a proxy host pointing to `baumagent-api:8000` and add the Authentik forward auth advanced config snippet.
 
 All requests will be gated by Authentik before reaching BaumAgent.
 
@@ -177,3 +218,17 @@ All requests will be gated by Authentik before reaching BaumAgent.
 ## Agent Tools
 
 The agent has access to: `list_dir`, `read_file`, `write_file`, `delete_file`, `web_search` (DuckDuckGo), and `finish`.
+
+---
+
+## License and Project Status
+
+This repository is a personal project shared publicly for learning, reference, portfolio, and experimentation purposes.
+
+Development may include AI-assisted ideation, drafting, refactoring, or code generation. All code and content published here were reviewed, selected, and curated before release.
+
+This project is licensed under the Apache License 2.0. See the LICENSE file for details.
+
+Unless explicitly stated otherwise, this repository is provided as-is, without warranty, support obligation, or guarantee of suitability for production use.
+
+Any third-party libraries, assets, icons, fonts, models, or dependencies used by this project remain subject to their own licenses and terms.
