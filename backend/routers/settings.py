@@ -47,12 +47,12 @@ class DocFormatSettings(BaseModel):
     body_font_size: int = 11           # 8–18
     header_color: str = "#2c3e50"      # hex color for section headings
     accent_color: str = "#3498db"      # hex color for dividers / title underline
-    include_summary: bool = True       # prepend an auto-generated bullets summary section
+    include_summary: bool = True       # prepend an auto-generated summary section
     include_links: bool = True         # include Sources section at end
     include_images: bool = False       # reserved for future use (no-op for now)
     section_style: str = "paragraphs"  # "paragraphs" | "bullets" | "mixed"
     page_size: str = "letter"          # "letter" | "a4"
-    summary_as_bullets: bool = True    # summary section uses bullet list
+    summary_as_bullets: bool = False   # summary section uses bullet list
 
 
 DEFAULT_DOC_FORMAT = {
@@ -66,7 +66,7 @@ DEFAULT_DOC_FORMAT = {
     "include_images": False,
     "section_style": "paragraphs",
     "page_size": "letter",
-    "summary_as_bullets": True,
+    "summary_as_bullets": False,
 }
 
 

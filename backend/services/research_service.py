@@ -22,20 +22,26 @@ def _strip_leading_bullets(text: str) -> str:
 
 
 def _build_summary_section(sections: list[dict], summary_as_bullets: bool) -> dict:
-    """Build a summary section from the first ~100 chars of each section's content."""
-    bullets = []
+    """Build a summary section from the first sentence of each section's content."""
+    import re
+    snippets = []
     for sec in sections:
         content = sec.get('content', '')
-        # Take first line or first 100 chars, whichever is shorter
         first_line = content.split('\n')[0].strip()
-        snippet = first_line[:100] if first_line else content[:100].strip()
-        snippet = _strip_leading_bullets(snippet)
+        snippet = _strip_leading_bullets(first_line)
+        # Trim to first complete sentence (up to 180 chars)
+        sentence_match = re.match(r'(.{20,180}?[.!?])\s', snippet + ' ')
+        if sentence_match:
+            snippet = sentence_match.group(1)
+        else:
+            snippet = snippet[:150].rstrip(',;')
         if snippet:
-            bullets.append(snippet)
+            snippets.append(snippet)
     if summary_as_bullets:
-        summary_content = '\n'.join(f"- {b}" for b in bullets)
+        summary_content = '\n'.join(f"- {s}" for s in snippets)
     else:
-        summary_content = '\n'.join(bullets)
+        # Join into flowing paragraph prose
+        summary_content = ' '.join(snippets)
     return {"heading": "Summary", "content": summary_content}
 
 

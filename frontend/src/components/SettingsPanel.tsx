@@ -17,7 +17,7 @@ const DEFAULT_DOC_FORMAT: DocFormatSettings = {
   include_images: false,
   section_style: 'paragraphs',
   page_size: 'letter',
-  summary_as_bullets: true,
+  summary_as_bullets: false,
 }
 
 const DEFAULT_SMB: SMBSettings = {
