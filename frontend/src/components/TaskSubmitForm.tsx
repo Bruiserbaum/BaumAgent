@@ -96,7 +96,7 @@ declare global {
 }
 
 export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) {
-  const [taskType, setTaskType] = useState<'code' | 'research' | 'coding' | 'structured_document'>('code')
+  const [taskType, setTaskType] = useState<'code' | 'research' | 'deep_research' | 'coding' | 'structured_document'>('code')
   const [description, setDescription] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [baseBranch, setBaseBranch] = useState('main')
@@ -346,7 +346,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
       formData.append('llm_backend', backend)
       formData.append('llm_model', model)
       formData.append('task_type', taskType)
-      if (taskType === 'research' || taskType === 'structured_document') {
+      if (taskType === 'research' || taskType === 'deep_research' || taskType === 'structured_document') {
         formData.append('output_format', outputFormat)
       }
       if (taskType === 'research') {
@@ -463,6 +463,9 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
         <button type="button" style={taskType === 'research' ? tabActive : tabInactive} onClick={() => setTaskType('research')}>
           Research
         </button>
+        <button type="button" style={taskType === 'deep_research' ? tabActive : tabInactive} onClick={() => setTaskType('deep_research')}>
+          Deep Research
+        </button>
         <button type="button" style={taskType === 'structured_document' ? tabActive : tabInactive} onClick={() => setTaskType('structured_document')}>
           Plan / Proposal
         </button>
@@ -480,6 +483,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
             onChange={e => setDescription(e.target.value)}
             placeholder={
               taskType === 'research' ? 'What would you like researched?' :
+              taskType === 'deep_research' ? 'What topic would you like a deep-research study document on?' :
               taskType === 'coding' ? 'Describe the script or code to generate...' :
               taskType === 'structured_document' ? 'Summarize what this document should cover, what the request is, and any key context...' :
               'Describe what the agent should do in the repository...'
@@ -698,10 +702,20 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
             <label style={label}>Study Style</label>
             <select style={selectStyle} value={researchStyle} onChange={e => setResearchStyle(e.target.value as 'standard' | 'deep_study')}>
               <option value="standard">Standard Report — analyst briefing with executive summary</option>
-              <option value="deep_study">Deep Study — authoritative, source-heavy, section-by-section analysis with direct answers, primary quotes, and straight conclusions</option>
             </select>
 
             <label style={{ ...label, marginTop: '10px' }}>Output Format</label>
+            <select style={selectStyle} value={outputFormat} onChange={e => setOutputFormat(e.target.value as 'pdf' | 'docx')}>
+              <option value="pdf">PDF</option>
+              <option value="docx">Word (.docx)</option>
+            </select>
+          </>
+        )}
+
+        {/* Deep Research-only fields */}
+        {taskType === 'deep_research' && (
+          <>
+            <label style={{ ...label, marginTop: '4px' }}>Output Format</label>
             <select style={selectStyle} value={outputFormat} onChange={e => setOutputFormat(e.target.value as 'pdf' | 'docx')}>
               <option value="pdf">PDF</option>
               <option value="docx">Word (.docx)</option>

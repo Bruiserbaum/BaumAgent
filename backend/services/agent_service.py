@@ -444,12 +444,132 @@ RESEARCH_DEEP_STUDY_PROMPT = (
     "until it includes a direct answer, evidence, breakdown, and practical implication."
 )
 
+DEEP_RESEARCH_PROMPT = (
+    "You are a deep-research agent. You produce authoritative, well-structured study documents "
+    "modeled after rigorous theological commentary, legal analysis, and academic reference works — "
+    "direct, source-heavy, and built for serious readers who want the full picture.\n\n"
+
+    "STYLE MODEL\n"
+    "Your output should read like an expert who has fully mastered the topic and is walking "
+    "the reader through it step by step. The tone is authoritative, direct, and never hedging. "
+    "Do not say 'some might argue' — state positions clearly and support them with evidence. "
+    "Avoid filler, padding, or transitional fluff. Every sentence carries weight.\n\n"
+
+    "SECTION STRUCTURE (apply to every major section)\n"
+    "1. Section heading — written as a bold declarative statement (e.g. 'The Role of Discipline in Scripture'). "
+    "Do NOT phrase headings as questions.\n"
+    "2. Open directly with the substance of the section — no 'Direct answer:' label, no meta-commentary. "
+    "Begin immediately with the argument, evidence, or definition.\n"
+    "3. Primary source evidence — quote primary sources verbatim with inline citations. "
+    "For non-textual topics, cite data, founding documents, expert consensus, or case studies.\n"
+    "4. Breakdown — a subsection titled 'Breakdown' that explains what the evidence means and "
+    "what it does NOT mean. Clarify common misreadings.\n"
+    "5. Contrast — where applicable, show what the evidence directs (✔) vs what it does NOT "
+    "direct (✖). Use short, punchy lines for each.\n\n"
+
+    "BIBLICAL VERSES\n"
+    "Whenever a biblical passage is referenced or cited, write out the full verse text in NIV "
+    "(New International Version) wording, followed by the reference in parentheses. "
+    "Do not paraphrase or abbreviate the verse — quote it exactly as it appears in the NIV. "
+    "Example: 'I can do all this through him who gives me strength. (Philippians 4:13, NIV)'\n\n"
+
+    "REQUIRED SECTIONS\n"
+    "Structure your document to include these types of sections (adapt headings to the topic):\n"
+    "- Foundational Definition — what the topic is, grounded in primary sources\n"
+    "- Historical and Origin Context — how it developed or where it comes from\n"
+    "- What the Evidence Actually Says — direct examination of primary sources\n"
+    "- Common Errors on Both Sides — two errors (overcorrection in each direction)\n"
+    "- Deep Dives — 2–4 focused sub-topics drawn from the prompt\n"
+    "- How Major Traditions or Positions Differ — perspectives with 'why' explained\n"
+    "- The Real Standard — the core criteria that matter, stripped of noise\n"
+    "- Bottom Line — final verdict with ✔/✖ lists\n\n"
+
+    "WRITING REQUIREMENTS\n"
+    "- Short paragraphs. One idea per paragraph. No multi-topic paragraphs.\n"
+    "- Bold key terms, concepts, and critical phrases inline (e.g. **faithfulness**).\n"
+    "- Use direct quotes from authoritative sources. Attribute them exactly.\n"
+    "- After presenting evidence, always explain its implications in plain language.\n"
+    "- Cover the errors on both extremes — do not only criticize one side.\n"
+    "- State the practical takeaway for each major section.\n"
+    "- Do not compress complex distinctions into a single sentence. Unpack them.\n"
+    "- Prefer completeness. If a topic deserves two paragraphs, write two.\n"
+    "- Use only standard printable characters. Do not use curly quotes, en-dashes, em-dashes, "
+    "or any non-ASCII punctuation — use straight quotes, hyphens, and standard ASCII only.\n\n"
+
+    "TONE\n"
+    "Authoritative. Not arrogant. Willing to say 'the evidence does not support X' directly. "
+    "State positions clearly. Do not bury conclusions in qualifications.\n\n"
+
+    "OUTPUT FORMAT\n"
+    "Call finish() with:\n"
+    "- title: a sharp, descriptive title for the study document\n"
+    "- sections: a list of {heading, content} objects. Each section must be fully developed. "
+    "Headings must be bold declarative statements (not questions). Content must include: "
+    "substantive analysis, primary source quotes with citations (full NIV text for any Bible "
+    "verse), breakdown analysis, and practical takeaway. Do NOT begin any content with the "
+    "words 'Direct answer'.\n"
+    "- sources: list of all URLs and sources cited\n\n"
+
+    "Do not call finish() until every section is fully developed. A section is not complete "
+    "until it includes evidence, breakdown, and practical implication."
+)
+
 
 def _build_research_system_prompt(opts: dict) -> str:
     """Return the appropriate system prompt based on research_style in opts."""
     if opts.get("research_style") == "deep_study":
         return RESEARCH_DEEP_STUDY_PROMPT
     return RESEARCH_SYSTEM_PROMPT
+
+
+def _clean_research_sections(sections: list[dict]) -> list[dict]:
+    """Strip common encoding artifacts and odd punctuation from section content.
+
+    Fixes double-encoded UTF-8 mojibake (e.g. â€" -> --, â€˜ -> '),
+    curly/smart quotes, and other non-ASCII punctuation that renders
+    as garbage in PDF/DOCX output.
+    """
+    import re
+
+    # Map of known mojibake sequences -> clean ASCII replacements
+    replacements = [
+        # Em-dash variants
+        ('\u00e2\u20ac\u201c', '--'),   # â€" (double-encoded em-dash)
+        ('\u00e2\u20ac\u201d', '--'),   # â€" variant
+        ('\u2014', '--'),               # actual em-dash U+2014
+        ('\u2013', '-'),                # en-dash U+2013
+        # Smart/curly quotes
+        ('\u2018', "'"),                # left single quote
+        ('\u2019', "'"),                # right single quote / apostrophe
+        ('\u201c', '"'),                # left double quote
+        ('\u201d', '"'),                # right double quote
+        # Other common artifacts
+        ('\u00e2\u20ac\u2122', "'"),    # â€™ (double-encoded right single quote)
+        ('\u00e2\u20ac\u0153', '"'),    # â€œ (double-encoded left double quote)
+        ('\u00e2\u20ac', '"'),          # â€ fragment
+        ('\u00c2\u00a0', ' '),          # non-breaking space
+        ('\u00a0', ' '),               # non-breaking space U+00A0
+        ('\u2026', '...'),             # ellipsis U+2026
+        ('\u00e2\u20ac\u00a6', '...'), # double-encoded ellipsis
+    ]
+
+    cleaned = []
+    for sec in sections:
+        content = sec.get('content', '')
+        heading = sec.get('heading', '')
+        for bad, good in replacements:
+            content = content.replace(bad, good)
+            heading = heading.replace(bad, good)
+        # Strip any remaining non-ASCII characters that aren't useful symbols
+        # Keep: checkmarks ✔ ✖, degree °, arrows, bullets •
+        keep_chars = set('\u2714\u2716\u00b0\u2022\u2192\u2190\u2191\u2193')
+        content = ''.join(c if (ord(c) < 128 or c in keep_chars) else '' for c in content)
+        heading = ''.join(c if (ord(c) < 128 or c in keep_chars) else '' for c in heading)
+        # Collapse multiple spaces introduced by removals
+        content = re.sub(r'  +', ' ', content)
+        heading = re.sub(r'  +', ' ', heading)
+        cleaned.append({'heading': heading, 'content': content})
+    return cleaned
 
 # Tools available for code tasks
 CODE_TOOL_DEFINITIONS: list[ToolDefinition] = [
@@ -946,6 +1066,8 @@ class AgentService:
         """Dispatch to the appropriate runner based on task_type."""
         if task_type == "research":
             await self._run_research(task, db, llm_client)
+        elif task_type == "deep_research":
+            await self._run_deep_research(task, db, llm_client)
         elif task_type == "coding":
             await self._run_coding(task, db, llm_client)
         elif task_type == "structured_document":
@@ -955,7 +1077,7 @@ class AgentService:
 
     def _task_produced_output(self, task_type: str) -> bool:
         """Return True if the agent actually finished and produced usable output."""
-        if task_type == "research":
+        if task_type in ("research", "deep_research"):
             return self._research_result is not None
         if task_type == "coding":
             return self._coding_result is not None
@@ -1094,6 +1216,96 @@ class AgentService:
             self._log("WARNING: LLM did not call finish() — no research result to generate document from.")
 
         # Upload to SMB share if configured by user
+        if task.output_file:
+            try:
+                from models.user import User as UserModel
+                from routers.settings import _get_user_settings
+                _smb_user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
+                if _smb_user:
+                    _smb_user_cfg = _get_user_settings(_smb_user)
+                    smb_cfg = _smb_user_cfg.get("smb", {})
+                    if smb_cfg.get("enabled"):
+                        from services.smb_service import upload_to_smb
+                        unc = upload_to_smb(task.output_file, smb_cfg)
+                        self._log(f"[smb] Uploaded to {unc}")
+            except Exception as _smb_err:
+                self._log(f"[smb] Upload failed (non-fatal): {_smb_err}")
+
+        task.status = TaskStatus.COMPLETE
+        task.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        self._log("Done.")
+
+    async def _run_deep_research(self, task, db, llm_client) -> None:
+        """Run a deep-research task: authoritative study document with NIV verses and symbol cleanup."""
+        initial_message_text = (
+            f"Deep research task: {task.description}\n\n"
+            "Follow the full research process:\n"
+            "1. Plan your sections as bold declarative headings — not questions.\n"
+            "2. Research each section thoroughly — use read_url to read full pages, "
+            "not just search snippets.\n"
+            "3. Draft each section with multiple full paragraphs: argument, evidence, "
+            "breakdown, and practical implication.\n"
+            "4. For every biblical verse referenced, write the full NIV text followed by "
+            "the reference in parentheses.\n"
+            "5. Do NOT begin any section content with the words 'Direct answer'.\n"
+            "6. Review for thin sections and expand before calling finish().\n\n"
+            "Do not call finish() early. A section is not complete if it contains only "
+            "one or two sentences."
+        )
+        initial_content = self._build_initial_message(initial_message_text)
+
+        self._finished = False
+        self._research_result = None
+        self._collected_image_urls = []
+
+        await llm_client.run_agent_loop(
+            system=DEEP_RESEARCH_PROMPT,
+            initial_message=initial_content,
+            tools=RESEARCH_TOOL_DEFINITIONS,
+            tool_executor=self.tool_executor,
+            log_fn=self._log,
+        )
+
+        if self._research_result:
+            from services.research_service import generate_document
+            # Clean up any encoding artifacts or odd characters before rendering
+            cleaned_sections = _clean_research_sections(self._research_result["sections"])
+            output_format = getattr(task, "output_format", None) or "pdf"
+            output_dir = f"/app/data/outputs/{task.id}"
+            self._log(f"Generating {output_format.upper()} document ...")
+            try:
+                try:
+                    from models.user import User as UserModel
+                    from routers.settings import _get_user_settings, get_doc_format as _get_doc_fmt
+                    _user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
+                    _user_cfg = _get_user_settings(_user) if _user else None
+                    _fmt = _get_doc_fmt(_user_cfg)
+                except Exception:
+                    _fmt = get_doc_format()
+                output_file = generate_document(
+                    title=self._research_result["title"],
+                    sections=cleaned_sections,
+                    sources=self._research_result["sources"],
+                    output_format=output_format,
+                    output_dir=output_dir,
+                    fmt=_fmt,
+                    image_urls=self._collected_image_urls if _fmt.get("include_images") else [],
+                )
+                task.output_file = output_file
+                db.commit()
+                if os.path.exists(output_file):
+                    size = os.path.getsize(output_file)
+                    self._log(f"Document saved: {output_file} ({size} bytes)")
+                else:
+                    self._log(f"[ERROR] generate_document returned path but file does not exist: {output_file}")
+                    task.output_file = None
+                    db.commit()
+            except Exception as _doc_err:
+                self._log(f"[ERROR] Document generation failed: {_doc_err}\n{traceback.format_exc()}")
+        else:
+            self._log("WARNING: LLM did not call finish() — no research result to generate document from.")
+
         if task.output_file:
             try:
                 from models.user import User as UserModel

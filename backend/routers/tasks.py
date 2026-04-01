@@ -123,6 +123,10 @@ async def create_task(
             **fallback_fields,
             "research_style": research_style,
         })
+    elif task_type == "deep_research":
+        extra = json.dumps({
+            **fallback_fields,
+        })
     else:
         extra = json.dumps({
             **fallback_fields,
