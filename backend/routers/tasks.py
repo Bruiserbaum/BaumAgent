@@ -1,10 +1,12 @@
 import json
 import os
+from datetime import datetime
 from typing import Annotated, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status, Form, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status, Form, UploadFile, File
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from redis import Redis
 from rq import Queue
 from sqlalchemy.orm import Session
@@ -16,6 +18,21 @@ from models.task import Task, TaskCreate, TaskRead, TaskStatus
 from worker.job import run_task
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
+
+
+class TaskListResponse(BaseModel):
+    items: list[TaskRead]
+    total: int
+    page: int
+    page_size: int
+
+
+class ExportFile(BaseModel):
+    filename: str
+    size_bytes: int
+    mime_type: str
+    created_at: datetime
+    download_url: str
 
 
 def _get_redis_queue() -> Queue:
@@ -166,17 +183,20 @@ async def create_task(
     return task
 
 
-@router.get("", response_model=list[TaskRead])
+@router.get("", response_model=TaskListResponse)
 def list_tasks(
     db: Annotated[Session, Depends(get_db)],
     current_user=Depends(get_current_user),
-) -> list[Task]:
-    return (
-        db.query(Task)
-        .filter(Task.user_id == current_user.id)
-        .order_by(Task.created_at.desc())
-        .all()
-    )
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+) -> TaskListResponse:
+    settings = get_settings()
+    q = db.query(Task)
+    if not settings.team_mode:
+        q = q.filter(Task.user_id == current_user.id)
+    total = q.count()
+    items = q.order_by(Task.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return TaskListResponse(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.get("/{task_id}", response_model=TaskRead)
@@ -200,8 +220,8 @@ def retry_task(
     task = db.query(Task).filter(Task.id == task_id, Task.user_id == current_user.id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if task.status not in (TaskStatus.FAILED, TaskStatus.COMPLETE):
-        raise HTTPException(status_code=409, detail="Only failed or completed tasks can be re-run")
+    if task.status not in (TaskStatus.FAILED, TaskStatus.COMPLETE, TaskStatus.CANCELLED):
+        raise HTTPException(status_code=409, detail="Only failed, cancelled, or completed tasks can be re-run")
     task.status = TaskStatus.QUEUED
     task.error_message = None
     task.rq_job_id = None
@@ -238,7 +258,7 @@ def cancel_task(
         except Exception:
             pass
 
-    task.status = TaskStatus.FAILED
+    task.status = TaskStatus.CANCELLED
     task.error_message = "Cancelled by user"
     db.commit()
 
@@ -322,6 +342,50 @@ async def get_task_output_text(
     with open(task.output_file, "r", encoding="utf-8", errors="replace") as fh:
         content = fh.read()
     return PlainTextResponse(content)
+
+
+_MIME_MAP = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "csv": "text/csv",
+    "txt": "text/plain",
+    "md": "text/markdown",
+    "zip": "application/zip",
+}
+
+
+@router.get("/{task_id}/exports", response_model=list[ExportFile])
+async def list_task_exports(
+    task_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task or task.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    output_dir = f"/app/data/outputs/{task_id}"
+    if not os.path.isdir(output_dir):
+        return []
+
+    base_url = str(request.base_url).rstrip("/")
+    exports = []
+    for fname in sorted(os.listdir(output_dir)):
+        fpath = os.path.join(output_dir, fname)
+        if not os.path.isfile(fpath):
+            continue
+        ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+        stat = os.stat(fpath)
+        exports.append(ExportFile(
+            filename=fname,
+            size_bytes=stat.st_size,
+            mime_type=_MIME_MAP.get(ext, "application/octet-stream"),
+            created_at=datetime.fromtimestamp(stat.st_mtime),
+            download_url=f"{base_url}/api/tasks/{task_id}/download",
+        ))
+    return exports
 
 
 @router.put("/{task_id}/project", response_model=TaskRead)

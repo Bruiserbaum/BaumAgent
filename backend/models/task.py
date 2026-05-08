@@ -14,6 +14,7 @@ class TaskStatus(str, enum.Enum):
     RUNNING = "running"
     COMPLETE = "complete"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 def _utcnow() -> datetime:
@@ -46,6 +47,7 @@ class Task(Base):
     user_id    = Column(String, nullable=True, index=True)   # nullable for backwards compat
     project_id = Column(String, nullable=True, index=True)
     extra_data = Column(Text, default="{}", nullable=False)  # JSON: code task options
+    progress_percent = Column(Integer, nullable=True)
 
 
 # ---------------------------------------------------------------------------
@@ -85,5 +87,6 @@ class TaskRead(BaseModel):
     user_id: Optional[str] = None
     project_id: Optional[str] = None
     extra_data: str = "{}"
+    progress_percent: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)

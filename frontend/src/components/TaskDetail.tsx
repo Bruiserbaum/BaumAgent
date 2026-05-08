@@ -77,10 +77,12 @@ const downloadBtn: React.CSSProperties = {
   fontSize: '14px',
 }
 
-const STATUS_TERMINAL = new Set(['complete', 'failed'])
+const STATUS_TERMINAL = new Set(['complete', 'failed', 'cancelled'])
 
 export default function TaskDetail({ task }: Props) {
   const [log, setLog] = useState(task.log ?? '')
+  const [liveStatus, setLiveStatus] = useState<string>(task.status)
+  const [progress, setProgress] = useState<number | null>(task.progress_percent ?? null)
   const [copyLabel, setCopyLabel] = useState('Copy Script')
   const termRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -115,19 +117,32 @@ export default function TaskDetail({ task }: Props) {
     const host = window.location.host
     const url = `${protocol}://${host}/ws/tasks/${task.id}/logs`
 
+    let isDone = false
+
     const connect = () => {
       const ws = new WebSocket(url)
       wsRef.current = ws
-      let buffer = ''
 
       ws.onmessage = (e) => {
-        buffer += e.data
-        setLog(buffer)
+        try {
+          const frame = JSON.parse(e.data) as { type: string; data: unknown }
+          if (frame.type === 'log') {
+            setLog(prev => prev + (frame.data as string))
+          } else if (frame.type === 'status') {
+            setLiveStatus(frame.data as string)
+          } else if (frame.type === 'progress') {
+            setProgress(frame.data as number)
+          } else if (frame.type === 'done') {
+            isDone = true
+          }
+        } catch {
+          // Fallback: treat as raw text (shouldn't happen with updated server)
+          setLog(prev => prev + e.data)
+        }
       }
 
       ws.onclose = () => {
-        // Reconnect if task still running
-        if (!STATUS_TERMINAL.has(task.status)) {
+        if (!isDone && !STATUS_TERMINAL.has(liveStatus)) {
           setTimeout(connect, 1500)
         }
       }
@@ -177,10 +192,28 @@ export default function TaskDetail({ task }: Props) {
 
         <div style={fieldRow}>
           <span style={fieldLabel}>Status</span>
-          <span style={{ ...fieldValue, fontWeight: 700, color: task.status === 'complete' ? '#4ade80' : task.status === 'failed' ? '#f87171' : task.status === 'running' ? '#60a5fa' : '#9ca3af' }}>
-            {task.status.toUpperCase()}
+          <span style={{
+            ...fieldValue, fontWeight: 700,
+            color: liveStatus === 'complete' ? '#4ade80'
+              : liveStatus === 'failed' ? '#f87171'
+              : liveStatus === 'cancelled' ? '#f59e0b'
+              : liveStatus === 'running' ? '#60a5fa'
+              : '#9ca3af',
+          }}>
+            {liveStatus.toUpperCase()}
           </span>
         </div>
+        {liveStatus === 'running' && progress !== null && (
+          <div style={fieldRow}>
+            <span style={fieldLabel}>Progress</span>
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ flex: 1, height: '6px', backgroundColor: '#1e3a5f', borderRadius: '3px' }}>
+                <div style={{ width: `${progress}%`, height: '100%', backgroundColor: '#60a5fa', borderRadius: '3px', transition: 'width 0.3s' }} />
+              </div>
+              <span style={{ color: '#60a5fa', fontSize: '12px', fontWeight: 600 }}>{progress}%</span>
+            </div>
+          </div>
+        )}
         {task.repo_url && (
           <div style={fieldRow}>
             <span style={fieldLabel}>Repo</span>
@@ -214,7 +247,7 @@ export default function TaskDetail({ task }: Props) {
           </div>
         )}
 
-        {(task.status === 'failed' || task.status === 'complete') && (
+        {(liveStatus === 'failed' || liveStatus === 'complete' || liveStatus === 'cancelled') && (
           <div style={{ marginTop: '12px' }}>
             <button
               onClick={async () => { await api.retryTask(task.id) }}

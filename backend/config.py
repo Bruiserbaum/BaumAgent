@@ -14,6 +14,27 @@ class Settings(BaseSettings):
     default_llm_backend: str = "anthropic"
     default_llm_model: str = "claude-opus-4-6"
 
+    # When true, GET /api/tasks returns all users' tasks (shared queue view).
+    team_mode: bool = False
+
+    # Pairing code TTL in seconds (shown as QR on the web UI).
+    pair_code_ttl: int = 300
+
+    # --- Push notifications ---
+    # APNs (Mac): token-based auth
+    apns_key_id: str = ""       # 10-char key ID from Apple Developer portal
+    apns_team_id: str = ""      # 10-char team ID
+    apns_bundle_id: str = ""    # e.g. com.bruiserbaum.baumagent
+    apns_key_pem: str = ""      # contents of the .p8 private key (newlines as \n)
+    apns_production: bool = False
+
+    # FCM (Android): legacy server key
+    fcm_server_key: str = ""
+
+    # WNS (Windows): Azure app registration
+    wns_package_sid: str = ""
+    wns_client_secret: str = ""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

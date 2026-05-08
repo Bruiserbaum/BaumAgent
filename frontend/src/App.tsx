@@ -127,8 +127,8 @@ export default function App() {
 
   const loadTasks = useCallback(async () => {
     try {
-      const [t, q] = await Promise.all([api.getTasks(), api.getQueueStatus()])
-      setTasks(t)
+      const [tResp, q] = await Promise.all([api.getTasks(), api.getQueueStatus()])
+      setTasks(tResp.items)
       setQueueStatus(q)
     } catch { /* ignore */ }
   }, [])

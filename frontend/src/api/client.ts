@@ -1,6 +1,6 @@
 const BASE = '/api'
 
-export type TaskStatus = 'queued' | 'running' | 'complete' | 'failed'
+export type TaskStatus = 'queued' | 'running' | 'complete' | 'failed' | 'cancelled'
 
 export interface User {
   id: string
@@ -44,6 +44,7 @@ export interface Task {
   output_format: string | null
   user_id?: string | null
   project_id?: string | null
+  progress_percent?: number | null
 }
 
 export interface TaskCreate {
@@ -123,8 +124,8 @@ export const api = {
   createTask: (data: FormData): Promise<Task> =>
     fetch(`${BASE}/tasks`, { method: 'POST', body: data }).then(r => r.json()),
 
-  getTasks: (): Promise<Task[]> =>
-    fetch(`${BASE}/tasks`).then(r => r.json()),
+  getTasks: (page = 1, pageSize = 25): Promise<{ items: Task[]; total: number; page: number; page_size: number }> =>
+    fetch(`${BASE}/tasks?page=${page}&page_size=${pageSize}`).then(r => r.json()),
 
   getTask: (id: string): Promise<Task> =>
     fetch(`${BASE}/tasks/${id}`).then(r => r.json()),

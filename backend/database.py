@@ -31,13 +31,14 @@ def _apply_migrations() -> None:
         if "tasks" in inspector.get_table_names():
             existing = {col["name"] for col in inspector.get_columns("tasks")}
             migrations = [
-                ("user_id",      "ALTER TABLE tasks ADD COLUMN user_id VARCHAR"),
-                ("project_id",   "ALTER TABLE tasks ADD COLUMN project_id VARCHAR"),
-                ("task_type",    "ALTER TABLE tasks ADD COLUMN task_type VARCHAR DEFAULT 'code'"),
-                ("output_file",  "ALTER TABLE tasks ADD COLUMN output_file VARCHAR"),
-                ("output_format","ALTER TABLE tasks ADD COLUMN output_format VARCHAR"),
-                ("images",       "ALTER TABLE tasks ADD COLUMN images TEXT DEFAULT '[]'"),
-                ("extra_data",   "ALTER TABLE tasks ADD COLUMN extra_data TEXT DEFAULT '{}'"),
+                ("user_id",          "ALTER TABLE tasks ADD COLUMN user_id VARCHAR"),
+                ("project_id",       "ALTER TABLE tasks ADD COLUMN project_id VARCHAR"),
+                ("task_type",        "ALTER TABLE tasks ADD COLUMN task_type VARCHAR DEFAULT 'code'"),
+                ("output_file",      "ALTER TABLE tasks ADD COLUMN output_file VARCHAR"),
+                ("output_format",    "ALTER TABLE tasks ADD COLUMN output_format VARCHAR"),
+                ("images",           "ALTER TABLE tasks ADD COLUMN images TEXT DEFAULT '[]'"),
+                ("extra_data",       "ALTER TABLE tasks ADD COLUMN extra_data TEXT DEFAULT '{}'"),
+                ("progress_percent", "ALTER TABLE tasks ADD COLUMN progress_percent INTEGER"),
             ]
             changed = False
             for col_name, sql in migrations:
@@ -62,6 +63,8 @@ def _apply_migrations() -> None:
 
 
 def init_db() -> None:
-    import models.task  # noqa: F401 — ensure model is registered
+    import models.task        # noqa: F401 — ensure model is registered
+    import models.api_token   # noqa: F401
+    import models.push_token  # noqa: F401
     Base.metadata.create_all(bind=engine)
     _apply_migrations()
