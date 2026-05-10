@@ -882,6 +882,16 @@ export default function SettingsPanel({ onClose }: Props) {
                             <span style={{ fontSize: '11px', color: statusColor, fontWeight: 600, flexShrink: 0 }}>
                               ● {statusLabel}
                             </span>
+                            {repo.status === 'complete' && (
+                              <span title="This repo is indexed and will be injected as code context in GitHub coding tasks" style={{
+                                fontSize: '10px', fontWeight: 700, color: '#7dd3fc',
+                                backgroundColor: '#0c2a45', border: '1px solid #1e4d8c',
+                                borderRadius: '4px', padding: '1px 6px', flexShrink: 0,
+                                cursor: 'default',
+                              }}>
+                                MCP READY
+                              </span>
+                            )}
                             {repo.indexed_at && (
                               <span style={{ fontSize: '11px', color: '#475569', flexShrink: 0 }}>
                                 {new Date(repo.indexed_at).toLocaleDateString()}
@@ -901,6 +911,11 @@ export default function SettingsPanel({ onClose }: Props) {
                         )
                       })}
                     </div>
+                  )}
+                  {gnRepos.some(r => r.status === 'complete') && (
+                    <p style={{ fontSize: '11px', color: '#475569', marginTop: '10px', lineHeight: 1.5 }}>
+                      <span style={{ color: '#7dd3fc', fontWeight: 600 }}>MCP READY</span> repos are automatically injected as code context when creating GitHub coding tasks.
+                    </p>
                   )}
                 </div>
 
