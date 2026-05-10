@@ -33,6 +33,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="BaumAgent", lifespan=lifespan)
 
+
+@app.get("/api/health", include_in_schema=False)
+async def health():
+    return {"status": "ok", "service": "BaumAgent"}
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
