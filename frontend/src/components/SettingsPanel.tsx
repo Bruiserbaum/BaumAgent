@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { api, PortalSettings, DocFormatSettings, SMBSettings, ModelsResponse } from '../api/client'
 import { modelOptionLabel } from '../api/modelMeta'
 
@@ -231,13 +231,6 @@ export default function SettingsPanel({ onClose }: Props) {
   const [smbTestResult, setSmbTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [smbTesting, setSmbTesting] = useState(false)
 
-  // Pairing code state
-  const [pairCode, setPairCode] = useState<string | null>(null)
-  const [pairExpiry, setPairExpiry] = useState(0)
-  const [pairLoading, setPairLoading] = useState(false)
-  const [pairError, setPairError] = useState<string | null>(null)
-  const [pairCopied, setPairCopied] = useState(false)
-  const pairTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     Promise.all([api.getSettings(), api.getModels()])
@@ -261,40 +254,7 @@ export default function SettingsPanel({ onClose }: Props) {
     setSettings(s => ({ ...s, smb: { ...(s.smb ?? DEFAULT_SMB), [key]: value } }))
   }
 
-  const handleGeneratePairCode = async () => {
-    if (pairTimerRef.current) clearInterval(pairTimerRef.current)
-    setPairLoading(true)
-    setPairError(null)
-    setPairCode(null)
-    try {
-      const res = await api.pairInitiate()
-      setPairCode(res.code)
-      setPairExpiry(res.expires_in)
-      pairTimerRef.current = setInterval(() => {
-        setPairExpiry(e => {
-          if (e <= 1) {
-            clearInterval(pairTimerRef.current!)
-            setPairCode(null)
-            return 0
-          }
-          return e - 1
-        })
-      }, 1000)
-    } catch (err: any) {
-      setPairError(err.message ?? 'Failed to generate code')
-    } finally {
-      setPairLoading(false)
-    }
-  }
-
-  const handleCopyCode = () => {
-    if (!pairCode) return
-    navigator.clipboard.writeText(pairCode)
-    setPairCopied(true)
-    setTimeout(() => setPairCopied(false), 2000)
-  }
-
-  const handleTestSMB = async () => {
+const handleTestSMB = async () => {
     setSmbTesting(true)
     setSmbTestResult(null)
     // Save first so the backend tests the current values
@@ -666,74 +626,6 @@ export default function SettingsPanel({ onClose }: Props) {
                   )}
                 </div>
               </>
-            )}
-          </div>
-
-          {/* Pair New Device */}
-          <div style={styles.sectionBlock}>
-            <p style={styles.sectionTitle}>Pair New Device</p>
-            <p style={{ color: '#475569', fontSize: '12px', marginBottom: '14px', marginTop: '-8px' }}>
-              Generate a one-time code to connect the BaumAgent Windows, Android, or macOS client.
-              The code expires after 5 minutes.
-            </p>
-
-            {!pairCode ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <button
-                  onClick={handleGeneratePairCode}
-                  disabled={pairLoading}
-                  style={{
-                    backgroundColor: '#0f3460', color: '#7dd3fc',
-                    border: '1px solid #1e4d8c', borderRadius: '6px',
-                    padding: '8px 18px', fontSize: '13px', cursor: 'pointer', fontWeight: 600,
-                  }}
-                >
-                  {pairLoading ? 'Generating…' : 'Generate Pairing Code'}
-                </button>
-                {pairError && (
-                  <span style={{ color: '#f87171', fontSize: '13px' }}>{pairError}</span>
-                )}
-              </div>
-            ) : (
-              <div style={{
-                backgroundColor: '#0a1628', border: '1px solid #1e3a5f',
-                borderRadius: '8px', padding: '16px 20px',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
-                  <span style={{
-                    fontFamily: 'monospace', fontSize: '26px', fontWeight: 700,
-                    letterSpacing: '0.25em', color: '#7dd3fc',
-                  }}>
-                    {pairCode}
-                  </span>
-                  <button
-                    onClick={handleCopyCode}
-                    style={{
-                      backgroundColor: pairCopied ? '#14532d' : '#0f3460',
-                      color: pairCopied ? '#4ade80' : '#94a3b8',
-                      border: '1px solid #1e4d8c', borderRadius: '5px',
-                      padding: '5px 12px', fontSize: '12px', cursor: 'pointer',
-                    }}
-                  >
-                    {pairCopied ? 'Copied!' : 'Copy'}
-                  </button>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ color: pairExpiry < 60 ? '#f87171' : '#64748b', fontSize: '12px' }}>
-                    Expires in {Math.floor(pairExpiry / 60)}:{String(pairExpiry % 60).padStart(2, '0')}
-                  </span>
-                  <button
-                    onClick={handleGeneratePairCode}
-                    style={{
-                      backgroundColor: 'transparent', color: '#475569',
-                      border: 'none', fontSize: '12px', cursor: 'pointer', padding: 0,
-                      textDecoration: 'underline',
-                    }}
-                  >
-                    Regenerate
-                  </button>
-                </div>
-              </div>
             )}
           </div>
 

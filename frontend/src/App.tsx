@@ -6,6 +6,7 @@ import KanbanBoard from './components/KanbanBoard'
 import TaskDetail from './components/TaskDetail'
 import TaskSubmitForm from './components/TaskSubmitForm'
 import SettingsPanel from './components/SettingsPanel'
+import PairPanel from './components/PairPanel'
 import DataCenterBackground from './components/DataCenterBackground'
 import ChatPanel from './components/ChatPanel'
 import UserAvatar from './components/UserAvatar'
@@ -119,6 +120,7 @@ export default function App() {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showPair, setShowPair] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [showChat, setShowChat] = useState(false)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
@@ -192,6 +194,11 @@ export default function App() {
                   title="Settings"
                 >⚙</button>
                 <button
+                  style={{ ...styles.settingsBtn, padding: '6px 10px' }}
+                  onClick={() => setShowPair(true)}
+                  title="Pair Device"
+                >&#x1F517;</button>
+                <button
                   style={{ ...styles.newTaskBtn, padding: '6px 10px' }}
                   onClick={() => setShowForm(true)}
                   title="New Task"
@@ -206,6 +213,7 @@ export default function App() {
             ) : (
               <>
                 <button style={styles.settingsBtn} onClick={() => setShowSettings(true)}>⚙ Settings</button>
+                <button style={styles.settingsBtn} onClick={() => setShowPair(true)}>&#x1F517; Pair Device</button>
                 <button style={styles.newTaskBtn} onClick={() => setShowForm(true)}>+ New Task</button>
                 <UserAvatar user={currentUser} onClick={currentUser ? () => setShowProfile(true) : undefined} />
               </>
@@ -314,6 +322,14 @@ export default function App() {
           <div style={styles.overlay} onClick={() => setShowSettings(false)}>
             <div onClick={e => e.stopPropagation()}>
               <SettingsPanel onClose={() => setShowSettings(false)} />
+            </div>
+          </div>
+        )}
+
+        {showPair && (
+          <div style={styles.overlay} onClick={() => setShowPair(false)}>
+            <div onClick={e => e.stopPropagation()}>
+              <PairPanel onClose={() => setShowPair(false)} />
             </div>
           </div>
         )}
