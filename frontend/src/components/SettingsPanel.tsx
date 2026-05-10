@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api, PortalSettings, DocFormatSettings, SMBSettings, GitNexusSettings, GitNexusSyncResult, ModelsResponse } from '../api/client'
+import { api, PortalSettings, DocFormatSettings, SMBSettings, GitNexusSettings, GitNexusTrackedRepo, GitNexusSyncResult, ModelsResponse } from '../api/client'
 import { modelOptionLabel } from '../api/modelMeta'
 
 interface Props {
@@ -36,6 +36,7 @@ const DEFAULT_GITNEXUS: GitNexusSettings = {
   enabled: false,
   url: 'http://gitnexus:4747',
   auto_sync: false,
+  tracked_repos: [],
 }
 
 const DEFAULT_SETTINGS: PortalSettings = {
@@ -288,6 +289,11 @@ export default function SettingsPanel({ onClose }: Props) {
   const [gnChecking, setGnChecking] = useState(false)
   const [gnSyncing, setGnSyncing] = useState(false)
   const [gnSyncResult, setGnSyncResult] = useState<GitNexusSyncResult | null>(null)
+  const [gnRepos, setGnRepos] = useState<GitNexusTrackedRepo[]>([])
+  const [gnReposLoading, setGnReposLoading] = useState(false)
+  const [addRepoUrl, setAddRepoUrl] = useState('')
+  const [addRepoLoading, setAddRepoLoading] = useState(false)
+  const [addRepoError, setAddRepoError] = useState('')
 
   useEffect(() => {
     Promise.all([api.getSettings(), api.getModels()])
@@ -324,6 +330,22 @@ export default function SettingsPanel({ onClose }: Props) {
     setSmbTesting(false)
   }
 
+  const loadGnRepos = async () => {
+    setGnReposLoading(true)
+    try {
+      const repos = await api.gitnexusRepos()
+      setGnRepos(repos)
+    } catch {
+      // silently ignore if gitnexus not reachable
+    } finally {
+      setGnReposLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (tab === 'gitnexus') loadGnRepos()
+  }, [tab])
+
   const handleCheckGnStatus = async () => {
     setGnChecking(true)
     setGnStatus(null)
@@ -344,11 +366,43 @@ export default function SettingsPanel({ onClose }: Props) {
       await api.updateSettings(settings)
       const result = await api.gitnexusSyncProjects()
       setGnSyncResult(result)
+      await loadGnRepos()
     } catch (err: any) {
-      setGnSyncResult({ indexed: 0, errors: 1, results: [{ repo_url: '', error: err.message }] })
+      setGnSyncResult({ indexed: 0, errors: 1, results: [{ url: '', error: err.message }] })
     } finally {
       setGnSyncing(false)
     }
+  }
+
+  const handleAddRepo = async () => {
+    const url = addRepoUrl.trim()
+    if (!url) return
+    setAddRepoLoading(true)
+    setAddRepoError('')
+    try {
+      await api.updateSettings(settings)
+      await api.gitnexusIndex(url)
+      setAddRepoUrl('')
+      await loadGnRepos()
+    } catch (err: any) {
+      setAddRepoError(err.message || 'Failed to index repo')
+    } finally {
+      setAddRepoLoading(false)
+    }
+  }
+
+  const handleReindex = async (url: string) => {
+    try {
+      await api.gitnexusReindex(url)
+      await loadGnRepos()
+    } catch { }
+  }
+
+  const handleRemoveRepo = async (url: string) => {
+    try {
+      await api.gitnexusRemoveRepo(url)
+      setGnRepos(r => r.filter(x => x.url !== url))
+    } catch { }
   }
 
   const handleSave = async () => {
@@ -654,91 +708,164 @@ export default function SettingsPanel({ onClose }: Props) {
 
             {/* ── GitNexus ── */}
             {tab === 'gitnexus' && (
-              <div style={s.sectionBlock}>
-                <p style={s.sectionTitle}>GitNexus Code Intelligence</p>
-                <p style={s.mutedNote}>
-                  Powered by{' '}
-                  <a href="https://github.com/abhigyanpatwari/GitNexus" target="_blank" rel="noreferrer"
-                    style={{ color: '#7dd3fc', textDecoration: 'none' }}>
-                    GitNexus
-                  </a>
-                  {' '}by Abhigyan Patwari. Indexes your GitHub repos and injects semantically relevant
-                  code snippets as context into every GitHub coding task.
-                </p>
+              <>
+                {/* Connection settings */}
+                <div style={s.sectionBlock}>
+                  <p style={s.sectionTitle}>GitNexus Code Intelligence</p>
+                  <p style={s.mutedNote}>
+                    Powered by{' '}
+                    <a href="https://github.com/abhigyanpatwari/GitNexus" target="_blank" rel="noreferrer"
+                      style={{ color: '#7dd3fc', textDecoration: 'none' }}>
+                      GitNexus
+                    </a>
+                    {' '}by Abhigyan Patwari. Indexes repos (public and private) and injects
+                    relevant code snippets as context into GitHub coding tasks. Private repos use
+                    the BaumAgent GitHub token automatically — no extra credentials needed.
+                  </p>
 
-                <div style={s.checkboxRow}>
-                  <input style={s.checkbox} type="checkbox" id="gn_enabled"
-                    checked={settings.gitnexus?.enabled ?? false}
-                    onChange={e => setGn('enabled', e.target.checked)} />
-                  <label style={s.checkboxLabel} htmlFor="gn_enabled">
-                    Enable GitNexus code intelligence for GitHub coding tasks
-                  </label>
-                </div>
+                  <div style={s.checkboxRow}>
+                    <input style={s.checkbox} type="checkbox" id="gn_enabled"
+                      checked={settings.gitnexus?.enabled ?? false}
+                      onChange={e => setGn('enabled', e.target.checked)} />
+                    <label style={s.checkboxLabel} htmlFor="gn_enabled">
+                      Enable GitNexus code intelligence for GitHub coding tasks
+                    </label>
+                  </div>
 
-                <div style={s.fieldRow}>
-                  <span style={s.label}>GitNexus URL</span>
-                  <input
-                    style={s.input}
-                    type="text"
-                    placeholder="http://gitnexus:4747"
-                    value={settings.gitnexus?.url ?? ''}
-                    onChange={e => setGn('url', e.target.value)}
-                  />
-                </div>
+                  <div style={s.fieldRow}>
+                    <span style={s.label}>GitNexus URL</span>
+                    <input style={s.input} type="text" placeholder="http://gitnexus:4747"
+                      value={settings.gitnexus?.url ?? ''}
+                      onChange={e => setGn('url', e.target.value)} />
+                  </div>
 
-                <div style={s.checkboxRow}>
-                  <input style={s.checkbox} type="checkbox" id="gn_auto_sync"
-                    checked={settings.gitnexus?.auto_sync ?? false}
-                    onChange={e => setGn('auto_sync', e.target.checked)} />
-                  <label style={s.checkboxLabel} htmlFor="gn_auto_sync">
-                    Auto-sync repos when creating a new coding task
-                  </label>
-                </div>
+                  <div style={s.checkboxRow}>
+                    <input style={s.checkbox} type="checkbox" id="gn_auto_sync"
+                      checked={settings.gitnexus?.auto_sync ?? false}
+                      onChange={e => setGn('auto_sync', e.target.checked)} />
+                    <label style={s.checkboxLabel} htmlFor="gn_auto_sync">
+                      Auto-sync repos when creating a new coding task
+                    </label>
+                  </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' }}>
-                  <button onClick={handleCheckGnStatus} disabled={gnChecking} style={s.actionBtn}>
-                    {gnChecking ? 'Checking…' : 'Check Connection'}
-                  </button>
-                  <button
-                    onClick={handleGnSync}
-                    disabled={gnSyncing || !(settings.gitnexus?.enabled)}
-                    style={{ ...s.actionBtn, opacity: settings.gitnexus?.enabled ? 1 : 0.45 }}
-                  >
-                    {gnSyncing ? 'Syncing…' : 'Sync All Repos'}
-                  </button>
-                  {gnStatus && (
-                    <span style={{ fontSize: '13px', color: gnStatus.connected ? '#4ade80' : '#f87171', fontWeight: 600 }}>
-                      {gnStatus.connected ? '● Connected' : '● Not reachable'}
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px', flexWrap: 'wrap' as const }}>
+                    <button onClick={handleCheckGnStatus} disabled={gnChecking} style={s.actionBtn}>
+                      {gnChecking ? 'Checking…' : 'Check Connection'}
+                    </button>
+                    <button onClick={handleGnSync} disabled={gnSyncing || !settings.gitnexus?.enabled}
+                      style={{ ...s.actionBtn, opacity: settings.gitnexus?.enabled ? 1 : 0.45 }}>
+                      {gnSyncing ? 'Syncing…' : 'Sync from Task History'}
+                    </button>
+                    {gnStatus && (
+                      <span style={{ fontSize: '13px', color: gnStatus.connected ? '#4ade80' : '#f87171', fontWeight: 600 }}>
+                        {gnStatus.connected ? '● Connected' : '● Not reachable'}
+                      </span>
+                    )}
+                  </div>
+
+                  {gnSyncResult && (
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px', lineHeight: 1.6 }}>
+                      Queued <strong style={{ color: '#e2e8f0' }}>{gnSyncResult.indexed}</strong> repo(s)
+                      {gnSyncResult.errors > 0 && <span style={{ color: '#f87171' }}> · {gnSyncResult.errors} failed</span>}
+                    </div>
                   )}
                 </div>
 
-                {gnSyncResult && (
-                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px', lineHeight: 1.6 }}>
-                    Queued <strong style={{ color: '#e2e8f0' }}>{gnSyncResult.indexed}</strong> repo(s) for indexing
-                    {gnSyncResult.errors > 0 && (
-                      <span style={{ color: '#f87171' }}> · {gnSyncResult.errors} error(s)</span>
-                    )}
-                    {gnSyncResult.results.filter(r => r.error).map((r, i) => (
-                      <div key={i} style={{ color: '#f87171', marginTop: '4px' }}>{r.repo_url || 'Error'}: {r.error}</div>
-                    ))}
-                  </div>
-                )}
+                {/* Indexed repos list */}
+                <div style={s.sectionBlock}>
+                  <p style={s.sectionTitle}>Indexed Repositories</p>
 
-                <div style={{ marginTop: '28px', padding: '16px', backgroundColor: '#0d1f3c', borderRadius: '8px', border: '1px solid #1e3a5f' }}>
-                  <p style={{ margin: '0 0 8px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Setup
-                  </p>
-                  <p style={{ margin: '0 0 6px', fontSize: '12px', color: '#64748b', lineHeight: 1.6 }}>
-                    Deploy GitNexus alongside BaumAgent by adding <code style={{ color: '#7dd3fc', fontSize: '11px' }}>COMPOSE_PROFILES=gitnexus</code> to
-                    your Portainer environment variables and redeploying. The service will be
-                    reachable at <code style={{ color: '#7dd3fc', fontSize: '11px' }}>http://gitnexus:4747</code> from BaumAgent containers.
+                  {/* Add repo row */}
+                  <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                    <input
+                      style={{ ...s.input, flex: 1 }}
+                      type="text"
+                      placeholder="https://github.com/user/repo"
+                      value={addRepoUrl}
+                      onChange={e => { setAddRepoUrl(e.target.value); setAddRepoError('') }}
+                      onKeyDown={e => e.key === 'Enter' && handleAddRepo()}
+                    />
+                    <button onClick={handleAddRepo} disabled={addRepoLoading || !addRepoUrl.trim()}
+                      style={{ ...s.actionBtn, whiteSpace: 'nowrap' as const, opacity: addRepoUrl.trim() ? 1 : 0.45 }}>
+                      {addRepoLoading ? 'Adding…' : '+ Index Repo'}
+                    </button>
+                  </div>
+                  {addRepoError && <div style={{ color: '#f87171', fontSize: '12px', marginBottom: '10px' }}>{addRepoError}</div>}
+
+                  {/* Repos table */}
+                  {gnReposLoading ? (
+                    <div style={{ color: '#475569', fontSize: '13px', padding: '12px 0' }}>Loading…</div>
+                  ) : gnRepos.length === 0 ? (
+                    <div style={{ color: '#475569', fontSize: '13px', padding: '12px 0' }}>
+                      No repos indexed yet. Add a repo above or use "Sync from Task History".
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '6px' }}>
+                      {gnRepos.map(repo => {
+                        const statusColor = {
+                          complete: '#4ade80',
+                          running: '#7dd3fc',
+                          queued: '#fbbf24',
+                          failed: '#f87171',
+                          unknown: '#475569',
+                        }[repo.status] ?? '#475569'
+                        const statusLabel = {
+                          complete: 'Indexed',
+                          running: 'Indexing…',
+                          queued: 'Queued',
+                          failed: 'Failed',
+                          unknown: 'Unknown',
+                        }[repo.status] ?? repo.status
+
+                        const repoName = repo.url.replace('https://github.com/', '').replace(/\/$/, '')
+
+                        return (
+                          <div key={repo.url} style={{
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            backgroundColor: '#0d1f3c', borderRadius: '6px',
+                            padding: '9px 12px', border: '1px solid #1e3a5f',
+                          }}>
+                            <span style={{ flex: 1, fontSize: '13px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
+                              {repoName}
+                            </span>
+                            <span style={{ fontSize: '11px', color: statusColor, fontWeight: 600, flexShrink: 0 }}>
+                              ● {statusLabel}
+                            </span>
+                            {repo.indexed_at && (
+                              <span style={{ fontSize: '11px', color: '#475569', flexShrink: 0 }}>
+                                {new Date(repo.indexed_at).toLocaleDateString()}
+                              </span>
+                            )}
+                            <button onClick={() => handleReindex(repo.url)}
+                              title="Re-index"
+                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '14px', padding: '0 2px', flexShrink: 0 }}>
+                              ↻
+                            </button>
+                            <button onClick={() => handleRemoveRepo(repo.url)}
+                              title="Remove"
+                              style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '14px', padding: '0 2px', flexShrink: 0 }}>
+                              ✕
+                            </button>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Setup note */}
+                <div style={{ padding: '14px 16px', backgroundColor: '#0d1f3c', borderRadius: '8px', border: '1px solid #1e3a5f' }}>
+                  <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                    Docker Setup
                   </p>
                   <p style={{ margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.6 }}>
-                    Or point the URL to an externally hosted GitNexus instance.
+                    Add <code style={{ color: '#7dd3fc', fontSize: '11px' }}>COMPOSE_PROFILES=gitnexus</code> to Portainer environment variables
+                    and redeploy to start the bundled GitNexus container at{' '}
+                    <code style={{ color: '#7dd3fc', fontSize: '11px' }}>http://gitnexus:4747</code>.
+                    Private repos are accessed using your BaumAgent GitHub token automatically.
                   </p>
                 </div>
-              </div>
+              </>
             )}
           </>
         )}

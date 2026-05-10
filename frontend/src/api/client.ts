@@ -99,10 +99,18 @@ export interface SMBSettings {
   remote_path: string
 }
 
+export interface GitNexusTrackedRepo {
+  url: string
+  job_id: string | null
+  status: 'queued' | 'running' | 'complete' | 'failed' | 'unknown'
+  indexed_at: string | null
+}
+
 export interface GitNexusSettings {
   enabled: boolean
   url: string
   auto_sync: boolean
+  tracked_repos: GitNexusTrackedRepo[]
 }
 
 export interface GitNexusStatus {
@@ -114,7 +122,7 @@ export interface GitNexusStatus {
 export interface GitNexusSyncResult {
   indexed: number
   errors: number
-  results: { repo_url: string; job_id?: string; error?: string; status?: string }[]
+  results: { url: string; job_id?: string; error?: string; status?: string }[]
 }
 
 export interface PortalSettings {
@@ -256,7 +264,10 @@ export const api = {
   gitnexusStatus: (): Promise<GitNexusStatus> =>
     fetch(`${BASE}/gitnexus/status`).then(r => r.json()),
 
-  gitnexusIndex: (repo_url: string): Promise<{ jobId: string }> =>
+  gitnexusRepos: (): Promise<GitNexusTrackedRepo[]> =>
+    fetch(`${BASE}/gitnexus/repos`).then(r => r.json()),
+
+  gitnexusIndex: (repo_url: string): Promise<GitNexusTrackedRepo> =>
     fetch(`${BASE}/gitnexus/index`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -265,6 +276,23 @@ export const api = {
       if (!r.ok) throw new Error(await r.text())
       return r.json()
     }),
+
+  gitnexusReindex: (repo_url: string): Promise<GitNexusTrackedRepo> =>
+    fetch(`${BASE}/gitnexus/repos/reindex`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_url }),
+    }).then(async r => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    }),
+
+  gitnexusRemoveRepo: (repo_url: string): Promise<void> =>
+    fetch(`${BASE}/gitnexus/repos`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_url }),
+    }).then(() => {}),
 
   gitnexusSyncProjects: (): Promise<GitNexusSyncResult> =>
     fetch(`${BASE}/gitnexus/sync-projects`, { method: 'POST' }).then(async r => {

@@ -112,10 +112,18 @@ class SMBSettings(BaseModel):
     remote_path: str = ""
 
 
+class GitNexusTrackedRepo(BaseModel):
+    url: str
+    job_id: str | None = None
+    status: str = "queued"       # queued | running | complete | failed | unknown
+    indexed_at: str | None = None
+
+
 class GitNexusSettings(BaseModel):
     enabled: bool = False
     url: str = "http://gitnexus:4747"
     auto_sync: bool = False
+    tracked_repos: list[GitNexusTrackedRepo] = []
 
 
 class PortalSettings(BaseModel):
