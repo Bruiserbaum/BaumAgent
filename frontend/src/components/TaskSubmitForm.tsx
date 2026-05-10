@@ -96,7 +96,7 @@ declare global {
 }
 
 export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) {
-  const [taskType, setTaskType] = useState<'code' | 'research' | 'deep_research' | 'coding' | 'structured_document'>('code')
+  const [taskType, setTaskType] = useState<'code' | 'research' | 'deep_research' | 'coding' | 'structured_document' | 'instructions'>('code')
   const [description, setDescription] = useState('')
   const [repoUrl, setRepoUrl] = useState('')
   const [baseBranch, setBaseBranch] = useState('main')
@@ -126,6 +126,9 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
   const [docIncludeRisks, setDocIncludeRisks] = useState(true)
   const [docIncludeAppendix, setDocIncludeAppendix] = useState(false)
   const [showDocOptional, setShowDocOptional] = useState(false)
+  // Instructions options
+  const [targetOs, setTargetOs] = useState<string[]>(['windows', 'macos'])
+  const [difficulty, setDifficulty] = useState<'Beginner' | 'Intermediate' | 'Advanced'>('Beginner')
   // Fallback
   const [fallbackToAnthropic, setFallbackToAnthropic] = useState(false)
   const [fallbackAnthropicModel, setFallbackAnthropicModel] = useState('claude-sonnet-4-6')
@@ -349,6 +352,10 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
       if (taskType === 'research' || taskType === 'deep_research' || taskType === 'structured_document') {
         formData.append('output_format', outputFormat)
       }
+      if (taskType === 'instructions') {
+        formData.append('target_os', targetOs.join(',') || 'windows')
+        formData.append('difficulty', difficulty)
+      }
       if (taskType === 'research') {
         formData.append('research_style', researchStyle)
       }
@@ -469,6 +476,9 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
         <button type="button" style={taskType === 'structured_document' ? tabActive : tabInactive} onClick={() => setTaskType('structured_document')}>
           Plan / Proposal
         </button>
+        <button type="button" style={taskType === 'instructions' ? tabActive : tabInactive} onClick={() => setTaskType('instructions')}>
+          Instructions
+        </button>
       </div>
 
       {error && <div style={errorStyle}>{error}</div>}
@@ -486,6 +496,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
               taskType === 'deep_research' ? 'What topic would you like a deep-research study document on?' :
               taskType === 'coding' ? 'Describe the script or code to generate...' :
               taskType === 'structured_document' ? 'Summarize what this document should cover, what the request is, and any key context...' :
+              taskType === 'instructions' ? 'Describe what technology or process to write step-by-step instructions for...' :
               'Describe what the agent should do in the repository...'
             }
           />
@@ -847,6 +858,40 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
           )
         })()}
 
+        {/* Instructions-only fields */}
+        {taskType === 'instructions' && (
+          <>
+            <label style={label}>Target OS</label>
+            <div style={{ display: 'flex', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
+              {(['windows', 'macos', 'linux'] as const).map(os => {
+                const labels = { windows: 'Windows', macos: 'macOS', linux: 'Linux' }
+                const checked = targetOs.includes(os)
+                return (
+                  <label key={os} style={{ display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer', fontSize: '13px', color: '#94a3b8', userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={e => {
+                        if (e.target.checked) setTargetOs(prev => [...prev, os])
+                        else setTargetOs(prev => prev.filter(o => o !== os))
+                      }}
+                      style={{ accentColor: '#7dd3fc', width: '14px', height: '14px', cursor: 'pointer' }}
+                    />
+                    {labels[os]}
+                  </label>
+                )
+              })}
+            </div>
+
+            <label style={label}>Difficulty Level</label>
+            <select style={selectStyle} value={difficulty} onChange={e => setDifficulty(e.target.value as typeof difficulty)}>
+              <option value="Beginner">Beginner — assumes no prior knowledge</option>
+              <option value="Intermediate">Intermediate — some familiarity assumed</option>
+              <option value="Advanced">Advanced — for experienced users</option>
+            </select>
+          </>
+        )}
+
         <label style={label}>LLM Backend</label>
         <select style={selectStyle} value={backend} onChange={e => setBackend(e.target.value)}>
           <option value="anthropic">Anthropic</option>
@@ -927,6 +972,7 @@ export default function TaskSubmitForm({ onClose, onCreated, projects }: Props) 
             taskType === 'research' ? 'Run Research' :
             taskType === 'coding' ? 'Generate Script' :
             taskType === 'structured_document' ? 'Generate Document' :
+            taskType === 'instructions' ? 'Generate Instructions' :
             'Run Agent'}
           </button>
         </div>

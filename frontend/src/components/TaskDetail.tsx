@@ -177,15 +177,18 @@ export default function TaskDetail({ task }: Props) {
   const typeLabel = task.task_type === 'research' ? 'Research'
     : task.task_type === 'coding' ? 'Script'
     : task.task_type === 'structured_document' ? 'Plan/Proposal'
+    : task.task_type === 'instructions' ? 'Instructions'
     : 'Github'
   const typeBadgeStyle: React.CSSProperties = {
     backgroundColor: task.task_type === 'research' ? '#0d3340'
       : task.task_type === 'coding' ? '#0d2d1a'
       : task.task_type === 'structured_document' ? '#2d1f00'
+      : task.task_type === 'instructions' ? '#0d1f33'
       : '#1e1b3a',
     color: task.task_type === 'research' ? '#38bdf8'
       : task.task_type === 'coding' ? '#4ade80'
       : task.task_type === 'structured_document' ? '#f59e0b'
+      : task.task_type === 'instructions' ? '#7dd3fc'
       : '#a78bfa',
     borderRadius: '4px',
     padding: '2px 8px',
@@ -196,6 +199,7 @@ export default function TaskDetail({ task }: Props) {
     border: `1px solid ${task.task_type === 'research' ? '#0369a1'
       : task.task_type === 'coding' ? '#166534'
       : task.task_type === 'structured_document' ? '#92400e'
+      : task.task_type === 'instructions' ? '#1e4d8c'
       : '#5b21b6'}`,
   }
 
@@ -341,6 +345,15 @@ export default function TaskDetail({ task }: Props) {
             <span style={{ color: '#4ade80', fontWeight: 600 }}>Research report ready</span>
             <button style={downloadBtn} onClick={() => api.downloadTask(task.id)}>
               &#x2B07; Download Report
+            </button>
+          </div>
+        )}
+
+        {(task.task_type === 'instructions' && task.status === 'complete') && (
+          <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: '#0d1f33', border: '1px solid #1e4d8c', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <span style={{ color: '#7dd3fc', fontWeight: 600 }}>Instructions document ready</span>
+            <button style={downloadBtn} onClick={() => api.downloadTask(task.id)}>
+              &#x2B07; Download .docx
             </button>
           </div>
         )}

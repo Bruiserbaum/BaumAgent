@@ -514,6 +514,84 @@ DEEP_RESEARCH_PROMPT = (
     "until it includes evidence, breakdown, and practical implication."
 )
 
+INSTRUCTIONS_SYSTEM_PROMPT = (
+    "You are a technical writing specialist. Your job is to produce polished, step-by-step "
+    "technology instruction documents that a complete non-expert can follow from start to finish "
+    "without getting stuck.\n\n"
+
+    "DOCUMENT STRUCTURE (required — every section must be present)\n"
+    "1. Title and Summary Block\n"
+    "   - Title: Short, action-oriented (e.g. 'How to Set Up a Local Python Development Environment')\n"
+    "   - Summary: 2-3 sentences covering what this teaches, who it is for, and what the reader "
+    "will have by the end.\n"
+    "   - Time estimate: e.g. 'About 20-30 minutes'\n"
+    "   - Skill level: Beginner / Intermediate / Advanced\n"
+    "   - Quick prerequisites list (bulleted)\n\n"
+
+    "2. Prerequisites (expanded)\n"
+    "   Full list of required software, accounts, hardware, or knowledge. For each item: name, "
+    "why it is needed, and where to get it (URL where possible).\n\n"
+
+    "3. OS-Specific Steps\n"
+    "   If the task varies by operating system (Windows, macOS, Linux): create clearly labelled "
+    "parallel sections. NEVER merge Windows and macOS commands into one section.\n"
+    "   - Windows: PowerShell or cmd, Windows paths, note any Windows-specific quirks.\n"
+    "   - macOS: Terminal/Zsh, Homebrew dependencies, note macOS-specific steps.\n"
+    "   - Linux: bash, note distro-specific differences.\n"
+    "   If only one OS is in scope, a single-OS section is fine.\n\n"
+
+    "4. Step-by-Step Instructions\n"
+    "   - Number every step. Start each with an action verb.\n"
+    "   - Every step must include: what to do, the exact command or click path, and what "
+    "expected output or confirmation the reader should see.\n"
+    "   - Commands must be exact and copy-pasteable. Do not leave unexplained placeholders.\n"
+    "   - Where a screenshot would help, write: 'You should see: [description of what appears].'\n\n"
+
+    "5. Verification\n"
+    "   After the main steps: provide a specific verification test the reader can run. "
+    "Include the exact command and the exact expected output.\n\n"
+
+    "6. Troubleshooting\n"
+    "   At least 3 common failure points, each with:\n"
+    "   - The error message or symptom\n"
+    "   - Why it happens\n"
+    "   - The fix\n\n"
+
+    "7. References\n"
+    "   Official documentation URLs and links to any tools or downloads mentioned.\n\n"
+
+    "RESEARCH REQUIREMENTS\n"
+    "Use web_search and read_url to find:\n"
+    "- Current download links and official documentation pages for all required software.\n"
+    "- Exact version numbers and commands that are current as of today.\n"
+    "- Known issues or common errors reported by users and their fixes.\n"
+    "- OS-specific quirks or prerequisites (e.g. Homebrew on macOS, WSL differences on Windows).\n"
+    "Do not write from memory alone — verify commands and URLs against live documentation.\n\n"
+
+    "WRITING RULES\n"
+    "- Write for someone who has never done this before. Do not assume any knowledge.\n"
+    "- Every command must be on its own line in a code block.\n"
+    "- Flag version-dependent steps: 'Note: this command may differ in versions after X.Y.'\n"
+    "- Use plain ASCII only. No curly quotes, em-dashes, or non-standard characters.\n"
+    "- Short sentences. One action per step. No compound steps.\n\n"
+
+    "QUALITY CHECKLIST (verify before calling finish)\n"
+    "- Can a complete beginner follow this without searching elsewhere?\n"
+    "- Are all commands copy-pasteable and unambiguous?\n"
+    "- Are OS differences fully separated and not mixed together?\n"
+    "- Does the verification section confirm success unambiguously?\n"
+    "- Are troubleshooting entries specific — not generic 'check the docs'?\n\n"
+
+    "OUTPUT FORMAT\n"
+    "Call finish() with:\n"
+    "- title: the document title\n"
+    "- sections: list of {heading, content} objects covering all 7 required sections above\n"
+    "- sources: list of all URLs referenced\n\n"
+
+    "Do not call finish() until all 7 sections are fully written. "
+    "An incomplete troubleshooting section or missing verification is not acceptable."
+)
+
 
 def _build_research_system_prompt(opts: dict) -> str:
     """Return the appropriate system prompt based on research_style in opts."""
@@ -1083,7 +1161,7 @@ class AgentService:
         elif name == "read_url":
             return self._tool_read_url(args["url"])
         elif name == "finish":
-            if task_type == "research":
+            if task_type in ("research", "deep_research", "instructions"):
                 return self._tool_finish_research(
                     title=args.get("title", "Research Report"),
                     sections=args.get("sections", []),
@@ -1141,6 +1219,8 @@ class AgentService:
             await self._run_research(task, db, llm_client)
         elif task_type == "deep_research":
             await self._run_deep_research(task, db, llm_client)
+        elif task_type == "instructions":
+            await self._run_instructions(task, db, llm_client)
         elif task_type == "coding":
             await self._run_coding(task, db, llm_client)
         elif task_type == "structured_document":
@@ -1150,7 +1230,7 @@ class AgentService:
 
     def _task_produced_output(self, task_type: str) -> bool:
         """Return True if the agent actually finished and produced usable output."""
-        if task_type in ("research", "deep_research"):
+        if task_type in ("research", "deep_research", "instructions"):
             return self._research_result is not None
         if task_type == "coding":
             return self._coding_result is not None
@@ -1378,6 +1458,125 @@ class AgentService:
                 self._log(f"[ERROR] Document generation failed: {_doc_err}\n{traceback.format_exc()}")
         else:
             self._log("WARNING: LLM did not call finish() — no research result to generate document from.")
+
+        if task.output_file:
+            try:
+                from models.user import User as UserModel
+                from routers.settings import _get_user_settings
+                _smb_user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
+                if _smb_user:
+                    _smb_user_cfg = _get_user_settings(_smb_user)
+                    smb_cfg = _smb_user_cfg.get("smb", {})
+                    if smb_cfg.get("enabled"):
+                        from services.smb_service import upload_to_smb
+                        unc = upload_to_smb(task.output_file, smb_cfg)
+                        self._log(f"[smb] Uploaded to {unc}")
+            except Exception as _smb_err:
+                self._log(f"[smb] Upload failed (non-fatal): {_smb_err}")
+
+        task.status = TaskStatus.COMPLETE
+        task.updated_at = datetime.now(timezone.utc)
+        db.commit()
+        self._log("Done.")
+
+    async def _run_instructions(self, task, db, llm_client) -> None:
+        """Run an instructions task: generate a how-to instruction document as .docx."""
+        try:
+            opts: dict = json.loads(task.extra_data or "{}")
+        except Exception:
+            opts = {}
+
+        target_os = opts.get("target_os", "windows,macos")
+        difficulty = opts.get("difficulty", "Beginner")
+
+        os_labels = {
+            "windows": "Windows",
+            "macos": "macOS",
+            "linux": "Linux",
+        }
+        target_os_list = [os_labels.get(o.strip().lower(), o.strip()) for o in target_os.split(",") if o.strip()]
+        os_clause = (
+            f"Target operating system(s): {', '.join(target_os_list)}. "
+            "Write OS-specific sections for each one — do NOT merge them."
+            if len(target_os_list) > 1
+            else f"Target operating system: {target_os_list[0] if target_os_list else 'Windows'}."
+        )
+
+        initial_message_text = (
+            f"Instructions task: {task.description}\n\n"
+            f"Difficulty level: {difficulty}\n"
+            f"{os_clause}\n\n"
+            "Follow this process:\n"
+            "1. Search for the official documentation, current download links, and version "
+            "numbers for all software involved. Use read_url to read official docs pages in full.\n"
+            "2. Search for common errors and troubleshooting for this technology so you can "
+            "write a specific troubleshooting section.\n"
+            "3. Write all 7 required sections:\n"
+            "   - Title and Summary Block (title, summary, time estimate, skill level, quick prerequisites)\n"
+            "   - Prerequisites (expanded with URLs)\n"
+            "   - OS-Specific Steps (fully separated per OS — never merged)\n"
+            "   - Step-by-Step Instructions (numbered, action verbs, expected output after each step)\n"
+            "   - Verification (exact command + expected output)\n"
+            "   - Troubleshooting (at least 3 specific errors with causes and fixes)\n"
+            "   - References (official docs URLs)\n"
+            "4. Verify the quality checklist before calling finish():\n"
+            "   - Can a complete beginner follow this without searching elsewhere?\n"
+            "   - Are all commands exact and copy-pasteable?\n"
+            "   - Are OS sections clearly separated (not mixed)?\n"
+            "   - Is verification unambiguous?\n"
+            "   - Is troubleshooting specific (not 'check the docs')?\n\n"
+            "Do not call finish() until all 7 sections are complete and the quality checklist passes."
+        )
+        initial_content = self._build_initial_message(initial_message_text)
+
+        self._finished = False
+        self._research_result = None
+        self._collected_image_urls = []
+
+        await llm_client.run_agent_loop(
+            system=INSTRUCTIONS_SYSTEM_PROMPT,
+            initial_message=initial_content,
+            tools=RESEARCH_TOOL_DEFINITIONS,
+            tool_executor=self.tool_executor,
+            log_fn=self._log,
+        )
+
+        if self._research_result:
+            from services.research_service import generate_document
+            output_dir = f"/app/data/outputs/{task.id}"
+            self._log("Generating DOCX instructions document ...")
+            try:
+                try:
+                    from models.user import User as UserModel
+                    from routers.settings import _get_user_settings, get_doc_format as _get_doc_fmt
+                    _user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
+                    _user_cfg = _get_user_settings(_user) if _user else None
+                    _fmt = _get_doc_fmt(_user_cfg)
+                except Exception:
+                    _fmt = get_doc_format()
+                output_file = generate_document(
+                    title=self._research_result["title"],
+                    sections=self._research_result["sections"],
+                    sources=self._research_result["sources"],
+                    output_format="docx",
+                    output_dir=output_dir,
+                    fmt=_fmt,
+                    image_urls=[],
+                )
+                task.output_file = output_file
+                task.output_format = "docx"
+                db.commit()
+                if os.path.exists(output_file):
+                    size = os.path.getsize(output_file)
+                    self._log(f"Document saved: {output_file} ({size} bytes)")
+                else:
+                    self._log(f"[ERROR] generate_document returned path but file does not exist: {output_file}")
+                    task.output_file = None
+                    db.commit()
+            except Exception as _doc_err:
+                self._log(f"[ERROR] Document generation failed: {_doc_err}\n{traceback.format_exc()}")
+        else:
+            self._log("WARNING: LLM did not call finish() — no instructions result to generate document from.")
 
         if task.output_file:
             try:

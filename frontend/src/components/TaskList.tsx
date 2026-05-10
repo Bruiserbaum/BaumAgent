@@ -45,23 +45,46 @@ function StatusBadge({ status }: { status: TaskStatus }) {
 }
 
 function TypeBadge({ taskType }: { taskType: string }) {
-  const isResearch = taskType === 'research'
+  const bgMap: Record<string, string> = {
+    research: '#0d3340', deep_research: '#0d3340',
+    coding: '#0d2d1a',
+    structured_document: '#2d1f00',
+    instructions: '#0d1f33',
+  }
+  const colorMap: Record<string, string> = {
+    research: '#38bdf8', deep_research: '#38bdf8',
+    coding: '#4ade80',
+    structured_document: '#f59e0b',
+    instructions: '#7dd3fc',
+  }
+  const borderMap: Record<string, string> = {
+    research: '#0369a1', deep_research: '#0369a1',
+    coding: '#166534',
+    structured_document: '#92400e',
+    instructions: '#1e4d8c',
+  }
+  const labelMap: Record<string, string> = {
+    research: 'Research', deep_research: 'Deep Research',
+    coding: 'Script',
+    structured_document: 'Plan/Proposal',
+    instructions: 'Instructions',
+  }
   return (
     <span
       style={{
-        backgroundColor: isResearch ? '#0d3340' : '#1e293b',
-        color: isResearch ? '#38bdf8' : '#64748b',
+        backgroundColor: bgMap[taskType] ?? '#1e293b',
+        color: colorMap[taskType] ?? '#64748b',
         borderRadius: '4px',
         padding: '2px 7px',
         fontSize: '11px',
         fontWeight: 700,
         textTransform: 'uppercase',
         letterSpacing: '0.06em',
-        border: `1px solid ${isResearch ? '#0369a1' : '#334155'}`,
+        border: `1px solid ${borderMap[taskType] ?? '#334155'}`,
         flexShrink: 0,
       }}
     >
-      {isResearch ? 'Research' : 'Code'}
+      {labelMap[taskType] ?? 'Code'}
     </span>
   )
 }

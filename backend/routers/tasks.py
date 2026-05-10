@@ -64,6 +64,9 @@ async def create_task(
     publish_release: str = Form("true"),
     update_docs: str = Form("if_needed"),
     update_changelog: str = Form("true"),
+    # Instructions options
+    target_os: str = Form("windows,macos"),
+    difficulty: str = Form("Beginner"),
     # Structured document options
     document_mode: str = Form("plan"),
     doc_audience: str = Form(""),
@@ -109,7 +112,13 @@ async def create_task(
         "fallback_anthropic_model": fallback_anthropic_model,
     }
 
-    if task_type == "structured_document":
+    if task_type == "instructions":
+        extra = json.dumps({
+            **fallback_fields,
+            "target_os": target_os,
+            "difficulty": difficulty,
+        })
+    elif task_type == "structured_document":
         extra = json.dumps({
             **fallback_fields,
             "document_mode": document_mode,
