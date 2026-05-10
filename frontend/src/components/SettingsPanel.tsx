@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api, PortalSettings, DocFormatSettings, SMBSettings, GitNexusSettings, GitNexusTrackedRepo, GitNexusSyncResult, ModelsResponse } from '../api/client'
+import { api, PortalSettings, DocFormatSettings, SMBSettings, GitNexusSettings, GitNexusTrackedRepo, GitNexusSyncResult, RepoHealthSettings, ScanHistoryRun, ModelsResponse } from '../api/client'
 import { modelOptionLabel } from '../api/modelMeta'
 
 interface Props {
@@ -32,11 +32,20 @@ const DEFAULT_SMB: SMBSettings = {
   remote_path: '',
 }
 
+const DEFAULT_HEALTH: RepoHealthSettings = {
+  schedule_enabled: false,
+  day_of_week: 1,
+  scan_hour: 2,
+  last_scan_at: null,
+  scan_runs: [],
+}
+
 const DEFAULT_GITNEXUS: GitNexusSettings = {
   enabled: false,
   url: 'http://gitnexus:4747',
   auto_sync: false,
   tracked_repos: [],
+  health: DEFAULT_HEALTH,
 }
 
 const DEFAULT_SETTINGS: PortalSettings = {
@@ -294,6 +303,10 @@ export default function SettingsPanel({ onClose }: Props) {
   const [addRepoUrl, setAddRepoUrl] = useState('')
   const [addRepoLoading, setAddRepoLoading] = useState(false)
   const [addRepoError, setAddRepoError] = useState('')
+  const [scanRunning, setScanRunning] = useState(false)
+  const [scanResult, setScanResult] = useState<{ count: number; run_at: string } | null>(null)
+  const [scanHistory, setScanHistory] = useState<ScanHistoryRun[]>([])
+  const [scanHistoryLoading, setScanHistoryLoading] = useState(false)
 
   useEffect(() => {
     Promise.all([api.getSettings(), api.getModels()])
@@ -404,6 +417,44 @@ export default function SettingsPanel({ onClose }: Props) {
       setGnRepos(r => r.filter(x => x.url !== url))
     } catch { }
   }
+
+  const setHealth = <K extends keyof RepoHealthSettings>(key: K, value: RepoHealthSettings[K]) => {
+    setSettings(ss => ({
+      ...ss,
+      gitnexus: {
+        ...(ss.gitnexus ?? DEFAULT_GITNEXUS),
+        health: { ...(ss.gitnexus?.health ?? DEFAULT_HEALTH), [key]: value },
+      },
+    }))
+  }
+
+  const handleRunScan = async () => {
+    setScanRunning(true)
+    setScanResult(null)
+    try {
+      await api.updateSettings(settings)
+      const result = await api.gitnexusScan()
+      setScanResult({ count: result.count, run_at: result.run_at })
+      await loadScanHistory()
+    } catch (err: any) {
+      setScanResult({ count: 0, run_at: '' })
+    } finally {
+      setScanRunning(false)
+    }
+  }
+
+  const loadScanHistory = async () => {
+    setScanHistoryLoading(true)
+    try {
+      const history = await api.gitnexusScanHistory()
+      setScanHistory(history)
+    } catch { }
+    finally { setScanHistoryLoading(false) }
+  }
+
+  useEffect(() => {
+    if (tab === 'gitnexus') loadScanHistory()
+  }, [tab])
 
   const handleSave = async () => {
     await api.updateSettings(settings)
@@ -849,6 +900,106 @@ export default function SettingsPanel({ onClose }: Props) {
                           </div>
                         )
                       })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Repository Health Checks */}
+                <div style={s.sectionBlock}>
+                  <p style={s.sectionTitle}>Repository Health Checks</p>
+                  <p style={s.mutedNote}>
+                    Automatically audits every indexed repo for bugs, logic errors, security issues,
+                    and broken functionality. Creates a plan-only task per repo — no code is committed.
+                    Results appear in the Tasks list tagged <strong style={{ color: '#e2e8f0' }}>[Health Scan]</strong>.
+                  </p>
+
+                  {/* Schedule toggle */}
+                  <div style={s.checkboxRow}>
+                    <input style={s.checkbox} type="checkbox" id="health_schedule"
+                      checked={settings.gitnexus?.health?.schedule_enabled ?? false}
+                      onChange={e => setHealth('schedule_enabled', e.target.checked)} />
+                    <label style={s.checkboxLabel} htmlFor="health_schedule">
+                      Run health checks on a weekly schedule
+                    </label>
+                  </div>
+
+                  {settings.gitnexus?.health?.schedule_enabled && (
+                    <div style={{ paddingLeft: '26px', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' as const }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ ...s.label, minWidth: 'auto', color: '#64748b', fontSize: '12px' }}>Every</span>
+                          <select style={{ ...s.select, flex: 'none', width: '120px', fontSize: '12px' }}
+                            value={settings.gitnexus.health?.day_of_week ?? 1}
+                            onChange={e => setHealth('day_of_week', parseInt(e.target.value))}>
+                            {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((d, i) => (
+                              <option key={i} value={i}>{d}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: '#64748b', fontSize: '12px' }}>at</span>
+                          <select style={{ ...s.select, flex: 'none', width: '90px', fontSize: '12px' }}
+                            value={settings.gitnexus.health?.scan_hour ?? 2}
+                            onChange={e => setHealth('scan_hour', parseInt(e.target.value))}>
+                            {Array.from({ length: 24 }, (_, h) => (
+                              <option key={h} value={h}>{String(h).padStart(2, '0')}:00 UTC</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                      {settings.gitnexus.health?.last_scan_at && (
+                        <div style={{ color: '#475569', fontSize: '11px', marginTop: '6px' }}>
+                          Last ran: {new Date(settings.gitnexus.health.last_scan_at).toLocaleString()}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Run now */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px', flexWrap: 'wrap' as const }}>
+                    <button
+                      onClick={handleRunScan}
+                      disabled={scanRunning || !settings.gitnexus?.enabled}
+                      style={{ ...s.actionBtn, opacity: settings.gitnexus?.enabled ? 1 : 0.45 }}>
+                      {scanRunning ? 'Starting scans…' : 'Run Now'}
+                    </button>
+                    {scanResult && scanResult.run_at && (
+                      <span style={{ fontSize: '12px', color: '#4ade80' }}>
+                        Started {scanResult.count} scan task{scanResult.count !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                    {scanResult && !scanResult.run_at && (
+                      <span style={{ fontSize: '12px', color: '#f87171' }}>Failed to start scans</span>
+                    )}
+                  </div>
+
+                  {/* Scan history */}
+                  {!scanHistoryLoading && scanHistory.length > 0 && (
+                    <div style={{ marginTop: '16px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: '8px' }}>
+                        Recent Scans
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '6px' }}>
+                        {scanHistory.slice(0, 5).map((run, i) => {
+                          const complete = run.tasks.filter(t => t.status === 'complete').length
+                          const failed = run.tasks.filter(t => t.status === 'failed').length
+                          const running = run.tasks.filter(t => t.status === 'running' || t.status === 'queued').length
+                          return (
+                            <div key={i} style={{
+                              backgroundColor: '#0d1f3c', borderRadius: '6px',
+                              padding: '8px 12px', border: '1px solid #1e3a5f',
+                              display: 'flex', alignItems: 'center', gap: '10px',
+                            }}>
+                              <span style={{ flex: 1, fontSize: '12px', color: '#94a3b8' }}>
+                                {new Date(run.run_at).toLocaleString()}
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#4ade80' }}>{complete} done</span>
+                              {running > 0 && <span style={{ fontSize: '11px', color: '#7dd3fc' }}>{running} running</span>}
+                              {failed > 0 && <span style={{ fontSize: '11px', color: '#f87171' }}>{failed} failed</span>}
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>

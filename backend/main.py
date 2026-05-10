@@ -1,5 +1,7 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,10 +28,50 @@ STATIC_DIR = "/app/static"
 INDEX_HTML = os.path.join(STATIC_DIR, "index.html")
 
 
+async def _health_scan_scheduler() -> None:
+    """Hourly background loop — fires scheduled GitNexus health scans for all users."""
+    await asyncio.sleep(60)  # brief startup delay
+    while True:
+        try:
+            now = datetime.now(timezone.utc)
+            from database import SessionLocal
+            from models.user import User
+            from routers.settings import _get_user_settings
+            from routers.gitnexus import _create_health_scan_tasks, _load_gn_settings, _record_scan_run
+
+            db = SessionLocal()
+            try:
+                for user in db.query(User).all():
+                    user_settings, gn = _load_gn_settings(user)
+                    if not gn.get("enabled", False):
+                        continue
+                    health = gn.get("health", {})
+                    if not health.get("schedule_enabled", False):
+                        continue
+                    if now.weekday() != health.get("day_of_week", 1):
+                        continue
+                    if now.hour != health.get("scan_hour", 2):
+                        continue
+                    last = health.get("last_scan_at")
+                    if last and (now - datetime.fromisoformat(last)).days < 6:
+                        continue
+                    tracked = gn.get("tracked_repos", [])
+                    if tracked:
+                        task_ids = _create_health_scan_tasks(user, db, tracked, user_settings)
+                        _record_scan_run(user, user_settings, task_ids, db)
+            finally:
+                db.close()
+        except Exception:
+            pass
+        await asyncio.sleep(3600)  # check again in one hour
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    scheduler = asyncio.create_task(_health_scan_scheduler())
     yield
+    scheduler.cancel()
 
 
 app = FastAPI(title="BaumAgent", lifespan=lifespan)

@@ -106,11 +106,25 @@ export interface GitNexusTrackedRepo {
   indexed_at: string | null
 }
 
+export interface RepoHealthSettings {
+  schedule_enabled: boolean
+  day_of_week: number      // 0=Mon … 6=Sun
+  scan_hour: number        // 0–23 UTC
+  last_scan_at: string | null
+  scan_runs: { run_at: string; task_ids: string[] }[]
+}
+
 export interface GitNexusSettings {
   enabled: boolean
   url: string
   auto_sync: boolean
   tracked_repos: GitNexusTrackedRepo[]
+  health: RepoHealthSettings
+}
+
+export interface ScanHistoryRun {
+  run_at: string
+  tasks: { id: string; repo_url: string; status: string }[]
 }
 
 export interface GitNexusStatus {
@@ -299,6 +313,15 @@ export const api = {
       if (!r.ok) throw new Error(await r.text())
       return r.json()
     }),
+
+  gitnexusScan: (): Promise<{ task_ids: string[]; count: number; run_at: string }> =>
+    fetch(`${BASE}/gitnexus/scan`, { method: 'POST' }).then(async r => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    }),
+
+  gitnexusScanHistory: (): Promise<ScanHistoryRun[]> =>
+    fetch(`${BASE}/gitnexus/scan/history`).then(r => r.json()),
 
   uploadDocument: async (file: File): Promise<DocumentAttachment> => {
     const formData = new FormData()

@@ -119,11 +119,20 @@ class GitNexusTrackedRepo(BaseModel):
     indexed_at: str | None = None
 
 
+class RepoHealthSettings(BaseModel):
+    schedule_enabled: bool = False
+    day_of_week: int = 1          # 0=Monday … 6=Sunday; default Tuesday
+    scan_hour: int = 2            # 0–23 UTC
+    last_scan_at: str | None = None
+    scan_runs: list[dict] = []    # [{run_at, task_ids}], newest first, capped at 10
+
+
 class GitNexusSettings(BaseModel):
     enabled: bool = False
     url: str = "http://gitnexus:4747"
     auto_sync: bool = False
     tracked_repos: list[GitNexusTrackedRepo] = []
+    health: RepoHealthSettings = RepoHealthSettings()
 
 
 class PortalSettings(BaseModel):

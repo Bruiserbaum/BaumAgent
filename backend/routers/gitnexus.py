@@ -7,19 +7,33 @@ an open-source code intelligence engine by Abhigyan Patwari.
 import json
 from datetime import datetime, timezone
 from urllib.parse import urlparse, urlunparse
+from uuid import uuid4
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from redis import Redis
+from rq import Queue
 from sqlalchemy.orm import Session
 
 from config import get_settings
 from database import get_db
 from dependencies import get_current_user
+from models.task import Task, TaskStatus
 from models.user import User
 from routers.settings import _get_user_settings, _save_user_settings
+from worker.job import run_task
 
 router = APIRouter(prefix="/api/gitnexus", tags=["gitnexus"])
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _get_redis_queue() -> Queue:
+    cfg = get_settings()
+    return Queue("baumagent", connection=Redis.from_url(cfg.redis_url))
 
 
 def _resolve_gitnexus_url(user: User, require_enabled: bool = True) -> str:
@@ -31,14 +45,7 @@ def _resolve_gitnexus_url(user: User, require_enabled: bool = True) -> str:
 
 
 def _inject_github_token(repo_url: str) -> str:
-    """Rewrite a GitHub HTTPS URL to embed the BaumAgent GitHub token.
-
-    https://github.com/user/repo  →  https://<token>@github.com/user/repo
-
-    Only applied to github.com URLs; other hosts are returned unchanged.
-    The token is never stored or returned to the client — it exists only
-    for the outbound request to GitNexus.
-    """
+    """Rewrite a GitHub HTTPS URL to embed the BaumAgent GitHub token server-side."""
     cfg = get_settings()
     token = cfg.github_token
     if not token:
@@ -51,14 +58,12 @@ def _inject_github_token(repo_url: str) -> str:
 
 
 def _clean_url(repo_url: str) -> str:
-    """Return the repo URL without any embedded credentials."""
     parsed = urlparse(repo_url)
     clean = parsed._replace(netloc=parsed.hostname or "")
     return urlunparse(clean).rstrip("/")
 
 
 def _load_gn_settings(user: User) -> tuple[dict, dict]:
-    """Return (full_user_settings, gitnexus_sub_dict)."""
     user_settings = _get_user_settings(user)
     gn = user_settings.get("gitnexus", {})
     return user_settings, gn
@@ -72,7 +77,6 @@ def _save_tracked_repos(user: User, user_settings: dict, repos: list[dict], db: 
 
 
 async def _poll_repo_status(gitnexus_url: str, repo: dict, client: httpx.AsyncClient) -> dict:
-    """Fetch current job status from GitNexus and merge into the repo dict."""
     job_id = repo.get("job_id")
     if not job_id or repo.get("status") in ("complete", "failed"):
         return repo
@@ -80,15 +84,82 @@ async def _poll_repo_status(gitnexus_url: str, repo: dict, client: httpx.AsyncCl
         resp = await client.get(f"{gitnexus_url}/api/analyze/{job_id}", timeout=5)
         if resp.status_code == 200:
             data = resp.json()
-            raw_status = data.get("status", "unknown")
-            # GitNexus statuses: pending / running / completed / failed
+            raw = data.get("status", "unknown")
             status_map = {"pending": "queued", "running": "running", "completed": "complete", "failed": "failed"}
-            repo = {**repo, "status": status_map.get(raw_status, raw_status)}
+            repo = {**repo, "status": status_map.get(raw, raw)}
             if repo["status"] == "complete" and not repo.get("indexed_at"):
                 repo["indexed_at"] = datetime.now(timezone.utc).isoformat()
     except Exception:
         pass
     return repo
+
+
+def _create_health_scan_tasks(user: User, db: Session, tracked_repos: list[dict], user_settings: dict) -> list[str]:
+    """Create a plan-only code task for every tracked repo. Returns the created task IDs."""
+    cfg = get_settings()
+    code_backend = user_settings.get("code_backend") or user_settings.get("default_llm_backend", cfg.default_llm_backend)
+    code_model = user_settings.get("code_model") or user_settings.get("default_llm_model", cfg.default_llm_model)
+
+    extra = json.dumps({
+        "delivery_mode": "plan_only",
+        "build_after_change": False,
+        "create_release_artifacts": False,
+        "publish_release": False,
+        "update_docs": "never",
+        "update_changelog": False,
+        "health_scan": True,
+    })
+
+    queue = _get_redis_queue()
+    task_ids: list[str] = []
+
+    for repo in tracked_repos:
+        repo_url = repo.get("url", "")
+        if not repo_url:
+            continue
+        repo_name = repo_url.replace("https://github.com/", "").rstrip("/")
+        task_id = str(uuid4())
+        task = Task(
+            id=task_id,
+            description=(
+                f"[Health Scan] Comprehensive bug and functionality audit of {repo_name}. "
+                "Review the entire codebase for: bugs, logic errors, security vulnerabilities, "
+                "error handling gaps, performance issues, and broken functionality. "
+                "Do not commit any changes — produce a detailed audit report in the task log."
+            ),
+            repo_url=repo_url,
+            base_branch="main",
+            llm_backend=code_backend,
+            llm_model=code_model,
+            task_type="code",
+            extra_data=extra,
+            status=TaskStatus.QUEUED,
+            log="",
+            user_id=user.id,
+        )
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+        job = queue.enqueue(run_task, task.id, job_timeout=3600)
+        task.rq_job_id = job.id
+        db.commit()
+        task_ids.append(task_id)
+
+    return task_ids
+
+
+def _record_scan_run(user: User, user_settings: dict, task_ids: list[str], db: Session) -> str:
+    now = datetime.now(timezone.utc).isoformat()
+    gn = user_settings.get("gitnexus", {})
+    health = gn.get("health", {})
+    health["last_scan_at"] = now
+    runs: list[dict] = health.get("scan_runs", [])
+    runs.insert(0, {"run_at": now, "task_ids": task_ids})
+    health["scan_runs"] = runs[:10]
+    gn["health"] = health
+    user_settings["gitnexus"] = gn
+    _save_user_settings(user, user_settings, db)
+    return now
 
 
 # ---------------------------------------------------------------------------
@@ -120,19 +191,15 @@ async def gitnexus_list_repos(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[dict]:
-    """Return tracked repos with live status polled from GitNexus."""
     user_settings, gn = _load_gn_settings(current_user)
     repos: list[dict] = gn.get("tracked_repos", [])
     if not repos:
         return []
-
     gitnexus_url = gn.get("url", "http://gitnexus:4747").rstrip("/")
     updated = []
     async with httpx.AsyncClient() as client:
         for repo in repos:
             updated.append(await _poll_repo_status(gitnexus_url, repo, client))
-
-    # Persist any status changes
     _save_tracked_repos(current_user, user_settings, updated, db)
     return updated
 
@@ -147,7 +214,6 @@ async def gitnexus_index(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Queue a single repo for indexing and track it."""
     gitnexus_url = _resolve_gitnexus_url(current_user)
     clean = _clean_url(req.repo_url)
     authed_url = _inject_github_token(req.repo_url)
@@ -160,12 +226,9 @@ async def gitnexus_index(
     job_id = data.get("jobId")
     user_settings, gn = _load_gn_settings(current_user)
     repos: list[dict] = gn.get("tracked_repos", [])
-
-    # Upsert: replace existing entry for this URL if present
     repos = [r for r in repos if _clean_url(r.get("url", "")) != clean]
     repos.append({"url": clean, "job_id": job_id, "status": "queued", "indexed_at": None})
     _save_tracked_repos(current_user, user_settings, repos, db)
-
     return {"url": clean, "job_id": job_id, "status": "queued"}
 
 
@@ -188,7 +251,6 @@ async def gitnexus_remove_repo(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Remove a repo from the tracked list."""
     clean = _clean_url(req.repo_url)
     user_settings, gn = _load_gn_settings(current_user)
     repos: list[dict] = gn.get("tracked_repos", [])
@@ -203,7 +265,6 @@ async def gitnexus_reindex_repo(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Re-trigger indexing for an already-tracked repo."""
     return await gitnexus_index(req, current_user, db)
 
 
@@ -212,9 +273,7 @@ async def gitnexus_sync_projects(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Queue all unique repo URLs from task history for indexing."""
     gitnexus_url = _resolve_gitnexus_url(current_user)
-    from models.task import Task
 
     rows = (
         db.query(Task.repo_url)
@@ -244,7 +303,56 @@ async def gitnexus_sync_projects(
                 results.append({"url": clean, "error": str(exc)})
 
     _save_tracked_repos(current_user, user_settings, list(tracked_by_url.values()), db)
-
     indexed = sum(1 for r in results if "job_id" in r)
     errors = sum(1 for r in results if "error" in r)
     return {"indexed": indexed, "errors": errors, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# Health scan endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/scan")
+async def trigger_scan(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Create plan-only audit tasks for every tracked repo and record the run."""
+    user_settings, gn = _load_gn_settings(current_user)
+    tracked: list[dict] = gn.get("tracked_repos", [])
+    if not tracked:
+        raise HTTPException(status_code=400, detail="No repos tracked. Add repos in the GitNexus settings first.")
+    if not gn.get("enabled", False):
+        raise HTTPException(status_code=400, detail="GitNexus is not enabled.")
+
+    task_ids = _create_health_scan_tasks(current_user, db, tracked, user_settings)
+    run_at = _record_scan_run(current_user, user_settings, task_ids, db)
+    return {"task_ids": task_ids, "count": len(task_ids), "run_at": run_at}
+
+
+@router.get("/scan/history")
+async def scan_history(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    """Return the last 10 scan runs with live task statuses."""
+    user_settings, gn = _load_gn_settings(current_user)
+    health = gn.get("health", {})
+    runs: list[dict] = health.get("scan_runs", [])
+
+    result = []
+    for run in runs:
+        task_ids = run.get("task_ids", [])
+        tasks = db.query(Task).filter(Task.id.in_(task_ids)).all() if task_ids else []
+        result.append({
+            "run_at": run["run_at"],
+            "tasks": [
+                {
+                    "id": t.id,
+                    "repo_url": t.repo_url,
+                    "status": t.status,
+                }
+                for t in tasks
+            ],
+        })
+    return result
