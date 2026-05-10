@@ -38,8 +38,9 @@ async def gitnexus_status(
     url = gn.get("url", "http://gitnexus:4747").rstrip("/")
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(f"{url}/api/health")
-            if resp.status_code == 200:
+            # GitNexus has no dedicated health endpoint; any HTTP response means it's running
+            resp = await client.get(f"{url}/")
+            if resp.status_code < 500:
                 return {"connected": True, "enabled": True, "url": url}
     except Exception:
         pass
