@@ -314,6 +314,16 @@ export const api = {
       return r.json()
     }),
 
+  gitnexusFixIssues: (source_task_id: string): Promise<{ task_id: string; repo_url: string }> =>
+    fetch(`${BASE}/gitnexus/fix`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_task_id }),
+    }).then(async r => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    }),
+
   gitnexusScan: (): Promise<{ task_ids: string[]; count: number; run_at: string }> =>
     fetch(`${BASE}/gitnexus/scan`, { method: 'POST' }).then(async r => {
       if (!r.ok) throw new Error(await r.text())

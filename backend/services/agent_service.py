@@ -848,6 +848,29 @@ class AgentService:
         self._task.updated_at = datetime.now(timezone.utc)
         self._db.commit()
 
+    async def _fetch_source_task_context(self, opts: dict, db) -> str | None:
+        """When a task was spawned from a health scan, prepend the scan's audit log as context."""
+        source_id = opts.get("source_task_id")
+        if not source_id:
+            return None
+        try:
+            from models.task import Task as TaskModel
+            source = db.query(TaskModel).filter(TaskModel.id == source_id).first()
+            if source is None or not source.log:
+                return None
+            self._log("Health Fix: injecting audit findings from source scan as context.")
+            # Cap at 8 000 chars to avoid overflowing the context window
+            findings = source.log[:8000]
+            return (
+                "## Health Scan Audit Findings\n\n"
+                "The following audit was produced by an automated health scan of this repository. "
+                "Your task is to fix **every** issue identified below. "
+                "Do not skip or defer any finding — address them all in this PR.\n\n"
+                f"```\n{findings}\n```"
+            )
+        except Exception:
+            return None
+
     async def _fetch_gitnexus_context(self, task, db) -> str | None:
         """Query GitNexus for code snippets relevant to this task and repo.
 
@@ -1553,6 +1576,11 @@ class AgentService:
                 f"Repo: {task.repo_url}\n\n"
                 "Start by listing the repository structure."
             )
+
+            # Prepend health-scan findings when this is a fix task
+            scan_ctx = await self._fetch_source_task_context(opts, db)
+            if scan_ctx:
+                initial_message_text = scan_ctx + "\n\n---\n\n" + initial_message_text
 
             # Prepend GitNexus code-intelligence context when available
             gitnexus_ctx = await self._fetch_gitnexus_context(task, db)

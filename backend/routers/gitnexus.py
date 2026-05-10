@@ -330,6 +330,75 @@ async def trigger_scan(
     return {"task_ids": task_ids, "count": len(task_ids), "run_at": run_at}
 
 
+class FixRequest(BaseModel):
+    source_task_id: str
+
+
+@router.post("/fix")
+async def fix_scan_issues(
+    req: FixRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Create a full (PR-mode) code task to fix issues found by a health scan task."""
+    source = db.query(Task).filter(
+        Task.id == req.source_task_id,
+        Task.user_id == current_user.id,
+    ).first()
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source task not found.")
+    if not source.description.startswith("[Health Scan]"):
+        raise HTTPException(status_code=400, detail="Source task is not a health scan.")
+    if source.status != TaskStatus.COMPLETE:
+        raise HTTPException(status_code=400, detail="Health scan has not completed yet.")
+
+    cfg = get_settings()
+    user_settings, _ = _load_gn_settings(current_user)
+    code_backend = user_settings.get("code_backend") or user_settings.get("default_llm_backend", cfg.default_llm_backend)
+    code_model = user_settings.get("code_model") or user_settings.get("default_llm_model", cfg.default_llm_model)
+
+    repo_name = (source.repo_url or "").replace("https://github.com/", "").rstrip("/")
+    task_id = str(uuid4())
+    extra = json.dumps({
+        "delivery_mode": "pr_mode",
+        "build_after_change": True,
+        "create_release_artifacts": False,
+        "publish_release": False,
+        "update_docs": "if_needed",
+        "update_changelog": True,
+        "source_task_id": req.source_task_id,
+        "health_fix": True,
+    })
+
+    task = Task(
+        id=task_id,
+        description=(
+            f"[Health Fix] Address all bugs and issues found in health scan of {repo_name}. "
+            "Review the audit findings and fix every identified bug, security vulnerability, "
+            "error handling gap, and functionality issue. Open a pull request with all changes."
+        ),
+        repo_url=source.repo_url,
+        base_branch=source.base_branch,
+        llm_backend=code_backend,
+        llm_model=code_model,
+        task_type="code",
+        extra_data=extra,
+        status=TaskStatus.QUEUED,
+        log="",
+        user_id=current_user.id,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+
+    queue = _get_redis_queue()
+    job = queue.enqueue(run_task, task.id, job_timeout=3600)
+    task.rq_job_id = job.id
+    db.commit()
+
+    return {"task_id": task_id, "repo_url": source.repo_url}
+
+
 @router.get("/scan/history")
 async def scan_history(
     current_user: User = Depends(get_current_user),

@@ -79,13 +79,32 @@ const downloadBtn: React.CSSProperties = {
 
 const STATUS_TERMINAL = new Set(['complete', 'failed', 'cancelled'])
 
+const isHealthScan = (t: Task) => t.description.startsWith('[Health Scan]')
+
 export default function TaskDetail({ task }: Props) {
   const [log, setLog] = useState(task.log ?? '')
   const [liveStatus, setLiveStatus] = useState<string>(task.status)
   const [progress, setProgress] = useState<number | null>(task.progress_percent ?? null)
   const [copyLabel, setCopyLabel] = useState('Copy Script')
+  const [fixLoading, setFixLoading] = useState(false)
+  const [fixTaskId, setFixTaskId] = useState<string | null>(null)
+  const [fixError, setFixError] = useState('')
   const termRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
+
+  const handleFixIssues = async () => {
+    setFixLoading(true)
+    setFixError('')
+    setFixTaskId(null)
+    try {
+      const result = await api.gitnexusFixIssues(task.id)
+      setFixTaskId(result.task_id)
+    } catch (err: any) {
+      setFixError(err.message || 'Failed to create fix task')
+    } finally {
+      setFixLoading(false)
+    }
+  }
 
   const handleCopyScript = async () => {
     try {
@@ -264,6 +283,47 @@ export default function TaskDetail({ task }: Props) {
             >
               {task.status === 'complete' ? '↻ Re-run Task' : '↻ Retry Task'}
             </button>
+          </div>
+        )}
+
+        {/* Health Scan — Fix Issues banner */}
+        {isHealthScan(task) && liveStatus === 'complete' && !fixTaskId && (
+          <div style={{
+            marginTop: '16px', padding: '14px 16px',
+            backgroundColor: '#1a0d2e', border: '1px solid #6d28d9',
+            borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+          }}>
+            <span style={{ color: '#c4b5fd', fontWeight: 600, flex: 1 }}>
+              Audit complete — grant permission to fix all found issues?
+            </span>
+            <button
+              onClick={handleFixIssues}
+              disabled={fixLoading}
+              style={{
+                backgroundColor: '#5b21b6', color: '#ede9fe',
+                border: '1px solid #7c3aed', borderRadius: '6px',
+                padding: '8px 20px', cursor: 'pointer',
+                fontWeight: 700, fontSize: '14px', whiteSpace: 'nowrap',
+              }}
+            >
+              {fixLoading ? 'Creating fix task…' : '⚡ Fix Issues'}
+            </button>
+            {fixError && <span style={{ color: '#f87171', fontSize: '13px' }}>{fixError}</span>}
+          </div>
+        )}
+
+        {/* Fix task created confirmation */}
+        {fixTaskId && (
+          <div style={{
+            marginTop: '16px', padding: '14px 16px',
+            backgroundColor: '#0d2818', border: '1px solid #166534',
+            borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+          }}>
+            <span style={{ color: '#4ade80', fontWeight: 600 }}>Fix task queued!</span>
+            <span style={{ color: '#94a3b8', fontSize: '13px' }}>
+              Task ID: <code style={{ color: '#7dd3fc', fontSize: '12px' }}>{fixTaskId.slice(0, 8)}…</code>
+              {' '}— find it in the Tasks list tagged <strong>[Health Fix]</strong>.
+            </span>
           </div>
         )}
 
