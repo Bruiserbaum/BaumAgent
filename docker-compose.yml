@@ -81,6 +81,27 @@ services:
       - ./data/redis:/data
     command: redis-server --save 60 1 --loglevel warning
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # GitNexus — optional code-intelligence service
+  # Powered by https://github.com/abhigyanpatwari/GitNexus (Abhigyan Patwari)
+  #
+  # Enable by adding  COMPOSE_PROFILES=gitnexus  in Portainer env vars,
+  # or run:  docker compose --profile gitnexus up -d
+  #
+  # Then in BaumAgent Settings → GitNexus, set URL to http://gitnexus:4747
+  # and click "Sync Repos" to index your GitHub repositories.
+  # ─────────────────────────────────────────────────────────────────────────
+  gitnexus:
+    image: ghcr.io/abhigyanpatwari/gitnexus:latest
+    container_name: baumagent-gitnexus
+    restart: unless-stopped
+    profiles:
+      - gitnexus
+    networks:
+      - baumagent
+    volumes:
+      - ./data/gitnexus:/app/data
+
 networks:
   baumagent:
     name: baumagent

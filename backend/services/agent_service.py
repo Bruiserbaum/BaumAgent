@@ -848,6 +848,56 @@ class AgentService:
         self._task.updated_at = datetime.now(timezone.utc)
         self._db.commit()
 
+    async def _fetch_gitnexus_context(self, task, db) -> str | None:
+        """Query GitNexus for code snippets relevant to this task and repo.
+
+        Powered by GitNexus (https://github.com/abhigyanpatwari/GitNexus).
+        Returns None silently if GitNexus is disabled, unreachable, or returns no results.
+        """
+        try:
+            from routers.settings import _get_user_settings
+            from models.user import User as UserModel
+
+            user = db.query(UserModel).filter(UserModel.id == task.user_id).first()
+            if user is None:
+                return None
+            user_settings = _get_user_settings(user)
+            gn = user_settings.get("gitnexus", {})
+            if not gn.get("enabled", False):
+                return None
+
+            gitnexus_url = gn.get("url", "http://gitnexus:4747").rstrip("/")
+            query = task.description[:500]
+
+            async with httpx.AsyncClient(timeout=10) as client:
+                resp = await client.post(
+                    f"{gitnexus_url}/api/search",
+                    json={"query": query, "repoUrl": task.repo_url, "limit": 5},
+                )
+                if resp.status_code != 200:
+                    return None
+                data = resp.json()
+
+            results = data.get("results", [])
+            if not results:
+                return None
+
+            self._log(f"GitNexus: injecting {len(results)} relevant code snippet(s) as context.")
+            lines = [
+                "## GitNexus Code Intelligence Context",
+                "The following code snippets from the repository are semantically relevant to this task:\n",
+            ]
+            for r in results:
+                file_path = r.get("filePath") or r.get("file_path", "")
+                content = r.get("content") or r.get("text", "")
+                score = r.get("score")
+                score_str = f" (relevance: {score:.2f})" if isinstance(score, float) else ""
+                lines.append(f"### `{file_path}`{score_str}")
+                lines.append(f"```\n{content}\n```\n")
+            return "\n".join(lines)
+        except Exception:
+            return None
+
     # ------------------------------------------------------------------
     # Tool implementations
     # ------------------------------------------------------------------
@@ -1503,6 +1553,12 @@ class AgentService:
                 f"Repo: {task.repo_url}\n\n"
                 "Start by listing the repository structure."
             )
+
+            # Prepend GitNexus code-intelligence context when available
+            gitnexus_ctx = await self._fetch_gitnexus_context(task, db)
+            if gitnexus_ctx:
+                initial_message_text = gitnexus_ctx + "\n\n---\n\n" + initial_message_text
+
             initial_content = self._build_initial_message(initial_message_text)
 
             system_prompt = _build_code_system_prompt(opts)

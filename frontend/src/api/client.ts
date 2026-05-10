@@ -99,6 +99,24 @@ export interface SMBSettings {
   remote_path: string
 }
 
+export interface GitNexusSettings {
+  enabled: boolean
+  url: string
+  auto_sync: boolean
+}
+
+export interface GitNexusStatus {
+  connected: boolean
+  enabled: boolean
+  url?: string
+}
+
+export interface GitNexusSyncResult {
+  indexed: number
+  errors: number
+  results: { repo_url: string; job_id?: string; error?: string; status?: string }[]
+}
+
 export interface PortalSettings {
   default_llm_backend: string
   default_llm_model: string
@@ -112,6 +130,7 @@ export interface PortalSettings {
   coding_model: string
   doc_format: DocFormatSettings
   smb: SMBSettings
+  gitnexus: GitNexusSettings
 }
 
 export interface DocumentAttachment {
@@ -233,6 +252,25 @@ export const api = {
 
   testSMB: (): Promise<{ ok: boolean; message: string }> =>
     fetch(`${BASE}/settings/smb/test`, { method: 'POST' }).then(r => r.json()),
+
+  gitnexusStatus: (): Promise<GitNexusStatus> =>
+    fetch(`${BASE}/gitnexus/status`).then(r => r.json()),
+
+  gitnexusIndex: (repo_url: string): Promise<{ jobId: string }> =>
+    fetch(`${BASE}/gitnexus/index`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_url }),
+    }).then(async r => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    }),
+
+  gitnexusSyncProjects: (): Promise<GitNexusSyncResult> =>
+    fetch(`${BASE}/gitnexus/sync-projects`, { method: 'POST' }).then(async r => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    }),
 
   uploadDocument: async (file: File): Promise<DocumentAttachment> => {
     const formData = new FormData()

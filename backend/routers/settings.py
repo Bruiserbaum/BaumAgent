@@ -112,6 +112,12 @@ class SMBSettings(BaseModel):
     remote_path: str = ""
 
 
+class GitNexusSettings(BaseModel):
+    enabled: bool = False
+    url: str = "http://gitnexus:4747"
+    auto_sync: bool = False
+
+
 class PortalSettings(BaseModel):
     default_llm_backend: str
     default_llm_model: str
@@ -125,6 +131,7 @@ class PortalSettings(BaseModel):
     coding_model: str = ""
     doc_format: DocFormatSettings = DocFormatSettings()
     smb: SMBSettings = SMBSettings()
+    gitnexus: GitNexusSettings = GitNexusSettings()
 
 
 # ---------------------------------------------------------------------------

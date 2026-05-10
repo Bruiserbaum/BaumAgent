@@ -18,6 +18,7 @@ from routers import (
     repos as repos_router,
     auth as auth_router,
     push as push_router,
+    gitnexus as gitnexus_router,
 )
 
 
@@ -58,6 +59,7 @@ app.include_router(queue_router.router)
 app.include_router(repos_router.router)
 app.include_router(auth_router.router)
 app.include_router(push_router.router)
+app.include_router(gitnexus_router.router)
 
 # Serve frontend static assets if the build exists
 _assets_dir = os.path.join(STATIC_DIR, "assets")

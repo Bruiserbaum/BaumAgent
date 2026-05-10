@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api, PortalSettings, DocFormatSettings, SMBSettings, ModelsResponse } from '../api/client'
+import { api, PortalSettings, DocFormatSettings, SMBSettings, GitNexusSettings, GitNexusSyncResult, ModelsResponse } from '../api/client'
 import { modelOptionLabel } from '../api/modelMeta'
 
 interface Props {
@@ -30,6 +30,12 @@ const DEFAULT_SMB: SMBSettings = {
   remote_path: '',
 }
 
+const DEFAULT_GITNEXUS: GitNexusSettings = {
+  enabled: false,
+  url: 'http://gitnexus:4747',
+  auto_sync: false,
+}
+
 const DEFAULT_SETTINGS: PortalSettings = {
   default_llm_backend: 'anthropic',
   default_llm_model: 'claude-sonnet-4-6',
@@ -43,6 +49,7 @@ const DEFAULT_SETTINGS: PortalSettings = {
   coding_model: '',
   doc_format: DEFAULT_DOC_FORMAT,
   smb: DEFAULT_SMB,
+  gitnexus: DEFAULT_GITNEXUS,
 }
 
 const styles = {
@@ -230,6 +237,9 @@ export default function SettingsPanel({ onClose }: Props) {
   const [saved, setSaved] = useState(false)
   const [smbTestResult, setSmbTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [smbTesting, setSmbTesting] = useState(false)
+  const [gnStatus, setGnStatus] = useState<{ connected: boolean; enabled: boolean } | null>(null)
+  const [gnSyncing, setGnSyncing] = useState(false)
+  const [gnSyncResult, setGnSyncResult] = useState<GitNexusSyncResult | null>(null)
 
 
   useEffect(() => {
@@ -252,6 +262,29 @@ export default function SettingsPanel({ onClose }: Props) {
 
   const setSmb = <K extends keyof SMBSettings>(key: K, value: SMBSettings[K]) => {
     setSettings(s => ({ ...s, smb: { ...(s.smb ?? DEFAULT_SMB), [key]: value } }))
+  }
+
+  const setGn = <K extends keyof GitNexusSettings>(key: K, value: GitNexusSettings[K]) => {
+    setSettings(s => ({ ...s, gitnexus: { ...(s.gitnexus ?? DEFAULT_GITNEXUS), [key]: value } }))
+  }
+
+  const handleCheckGnStatus = async () => {
+    const status = await api.gitnexusStatus()
+    setGnStatus(status)
+  }
+
+  const handleGnSync = async () => {
+    setGnSyncing(true)
+    setGnSyncResult(null)
+    try {
+      await api.updateSettings(settings)
+      const result = await api.gitnexusSyncProjects()
+      setGnSyncResult(result)
+    } catch (err: any) {
+      setGnSyncResult({ indexed: 0, errors: 1, results: [{ repo_url: '', error: err.message }] })
+    } finally {
+      setGnSyncing(false)
+    }
   }
 
 const handleTestSMB = async () => {
@@ -625,6 +658,98 @@ const handleTestSMB = async () => {
                     </span>
                   )}
                 </div>
+              </>
+            )}
+          </div>
+
+          {/* GitNexus Code Intelligence */}
+          <div style={styles.sectionBlock}>
+            <p style={styles.sectionTitle}>GitNexus Code Intelligence</p>
+            <p style={{ color: '#475569', fontSize: '12px', marginBottom: '14px', marginTop: '-8px' }}>
+              Powered by{' '}
+              <a href="https://github.com/abhigyanpatwari/GitNexus" target="_blank" rel="noreferrer"
+                style={{ color: '#7dd3fc', textDecoration: 'none' }}>
+                GitNexus
+              </a>
+              {' '}by Abhigyan Patwari. Indexes your GitHub repos for semantic code search, injected as context into coding tasks.
+            </p>
+
+            <div style={styles.checkboxRow}>
+              <input
+                style={styles.checkbox}
+                type="checkbox"
+                id="gn_enabled"
+                checked={settings.gitnexus?.enabled ?? false}
+                onChange={e => setGn('enabled', e.target.checked)}
+              />
+              <label style={styles.checkboxLabel} htmlFor="gn_enabled">
+                Enable GitNexus code intelligence for GitHub coding tasks
+              </label>
+            </div>
+
+            {settings.gitnexus?.enabled && (
+              <>
+                <div style={styles.fieldRow}>
+                  <span style={styles.label}>GitNexus URL</span>
+                  <input
+                    style={styles.input}
+                    type="text"
+                    placeholder="http://gitnexus:4747"
+                    value={settings.gitnexus.url}
+                    onChange={e => setGn('url', e.target.value)}
+                  />
+                </div>
+
+                <div style={styles.checkboxRow}>
+                  <input
+                    style={styles.checkbox}
+                    type="checkbox"
+                    id="gn_auto_sync"
+                    checked={settings.gitnexus.auto_sync}
+                    onChange={e => setGn('auto_sync', e.target.checked)}
+                  />
+                  <label style={styles.checkboxLabel} htmlFor="gn_auto_sync">
+                    Auto-sync repos when creating a new coding task
+                  </label>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' as const }}>
+                  <button
+                    onClick={handleCheckGnStatus}
+                    style={{
+                      backgroundColor: '#0f2030', color: '#94a3b8',
+                      border: '1px solid #334155', borderRadius: '6px',
+                      padding: '7px 16px', fontSize: '13px', cursor: 'pointer',
+                    }}
+                  >
+                    Check Connection
+                  </button>
+                  <button
+                    onClick={handleGnSync}
+                    disabled={gnSyncing}
+                    style={{
+                      backgroundColor: '#0f2030', color: '#94a3b8',
+                      border: '1px solid #334155', borderRadius: '6px',
+                      padding: '7px 16px', fontSize: '13px', cursor: 'pointer',
+                    }}
+                  >
+                    {gnSyncing ? 'Syncing…' : 'Sync All Repos'}
+                  </button>
+                  {gnStatus && (
+                    <span style={{ fontSize: '13px', color: gnStatus.connected ? '#4ade80' : '#f87171' }}>
+                      {gnStatus.connected ? 'Connected' : 'Not reachable'}
+                    </span>
+                  )}
+                </div>
+
+                {gnSyncResult && (
+                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
+                    Queued {gnSyncResult.indexed} repo(s) for indexing
+                    {gnSyncResult.errors > 0 && (
+                      <span style={{ color: '#f87171' }}> · {gnSyncResult.errors} error(s)</span>
+                    )}
+                  </div>
+                )}
               </>
             )}
           </div>
