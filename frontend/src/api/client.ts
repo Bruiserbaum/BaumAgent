@@ -120,7 +120,33 @@ export interface DocumentAttachment {
   char_count: number
 }
 
+export interface PairInitiateResponse {
+  code: string
+  expires_in: number
+  pair_url: string
+}
+
+export interface ApiToken {
+  id: string
+  label: string
+  created_at: string
+  last_used_at: string | null
+}
+
 export const api = {
+  pairInitiate: (): Promise<PairInitiateResponse> =>
+    fetch(`${BASE}/auth/pair/initiate`, { method: 'POST' }).then(async r => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    }),
+
+  listTokens: (): Promise<ApiToken[]> =>
+    fetch(`${BASE}/auth/tokens`).then(r => r.json()),
+
+  revokeToken: (id: string): Promise<void> =>
+    fetch(`${BASE}/auth/tokens/${id}`, { method: 'DELETE' }).then(() => {}),
+
+
   createTask: (data: FormData): Promise<Task> =>
     fetch(`${BASE}/tasks`, { method: 'POST', body: data }).then(r => r.json()),
 
