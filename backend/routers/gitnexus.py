@@ -4,6 +4,7 @@ GitNexus integration router.
 Powered by GitNexus (https://github.com/abhigyanpatwari/GitNexus) —
 an open-source code intelligence engine by Abhigyan Patwari.
 """
+import asyncio
 import json
 from datetime import datetime, timezone
 from urllib.parse import urlparse, urlunparse
@@ -543,6 +544,7 @@ async def gitnexus_import_github(
                 results.append({"url": clean, "name": repo.get("name", ""), "job_id": job_id, "status": "queued"})
             except Exception as exc:
                 results.append({"url": clean, "name": repo.get("name", ""), "error": str(exc)})
+            await asyncio.sleep(1)
 
     _save_tracked_repos(current_user, user_settings, list(tracked_by_url.values()), db)
     indexed = sum(1 for r in results if r.get("job_id") is not None)
