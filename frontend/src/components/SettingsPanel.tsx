@@ -891,7 +891,7 @@ export default function SettingsPanel({ onClose }: Props) {
                   {ghImportResult && (
                     <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', lineHeight: 1.6 }}>
                       {ghImportResult.errors > 0 && ghImportResult.indexed === 0
-                        ? <span style={{ color: '#f87171' }}>{ghImportResult.results[0]?.error || 'Import failed'}</span>
+                        ? <span style={{ color: '#f87171' }}>{ghImportResult.results.find(r => r.error)?.error || 'Import failed'}</span>
                         : <>Queued <strong style={{ color: '#e2e8f0' }}>{ghImportResult.indexed}</strong> of <strong style={{ color: '#e2e8f0' }}>{ghImportResult.total}</strong> repos
                           {ghImportResult.errors > 0 && <span style={{ color: '#f87171' }}> · {ghImportResult.errors} failed</span>}
                         </>

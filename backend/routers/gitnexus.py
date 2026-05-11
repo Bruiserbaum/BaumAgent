@@ -53,7 +53,7 @@ def _inject_github_token(repo_url: str) -> str:
     parsed = urlparse(repo_url)
     if parsed.hostname not in ("github.com", "www.github.com"):
         return repo_url
-    authed = parsed._replace(netloc=f"{token}@{parsed.hostname}")
+    authed = parsed._replace(netloc=f"x-access-token:{token}@{parsed.hostname}")
     return urlunparse(authed)
 
 
@@ -311,7 +311,7 @@ async def gitnexus_sync_projects(
                 results.append({"url": clean, "error": str(exc)})
 
     _save_tracked_repos(current_user, user_settings, list(tracked_by_url.values()), db)
-    indexed = sum(1 for r in results if "job_id" in r)
+    indexed = sum(1 for r in results if r.get("job_id") is not None)
     errors = sum(1 for r in results if "error" in r)
     return {"indexed": indexed, "errors": errors, "results": results}
 
@@ -545,6 +545,6 @@ async def gitnexus_import_github(
                 results.append({"url": clean, "name": repo.get("name", ""), "error": str(exc)})
 
     _save_tracked_repos(current_user, user_settings, list(tracked_by_url.values()), db)
-    indexed = sum(1 for r in results if "job_id" in r)
+    indexed = sum(1 for r in results if r.get("job_id") is not None)
     errors = sum(1 for r in results if "error" in r)
     return {"indexed": indexed, "errors": errors, "total": len(all_repos), "results": results}

@@ -95,6 +95,8 @@ services:
       - baumagent
     volumes:
       - ./data/gitnexus:/app/data
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
 
 networks:
   baumagent:
