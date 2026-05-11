@@ -82,11 +82,16 @@ async def _poll_repo_status(gitnexus_url: str, repo: dict, client: httpx.AsyncCl
         return repo
     try:
         resp = await client.get(f"{gitnexus_url}/api/analyze/{job_id}", timeout=5)
-        if resp.status_code == 200:
+        if resp.status_code in (200, 202):
             data = resp.json()
             raw = data.get("status", "unknown")
-            status_map = {"pending": "queued", "running": "running", "completed": "complete", "failed": "failed"}
-            repo = {**repo, "status": status_map.get(raw, raw)}
+            status_map = {
+                "queued": "queued", "pending": "queued",
+                "cloning": "running", "analyzing": "running", "running": "running",
+                "completed": "complete", "complete": "complete",
+                "failed": "failed",
+            }
+            repo = {**repo, "status": status_map.get(raw, "running")}
             if repo["status"] == "complete" and not repo.get("indexed_at"):
                 repo["indexed_at"] = datetime.now(timezone.utc).isoformat()
     except Exception:
@@ -219,8 +224,10 @@ async def gitnexus_index(
     authed_url = _inject_github_token(req.repo_url)
 
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{gitnexus_url}/api/analyze", json={"repoUrl": authed_url})
-        resp.raise_for_status()
+        resp = await client.post(f"{gitnexus_url}/api/analyze", json={"url": authed_url})
+        if not resp.is_success:
+            body = resp.text
+            raise HTTPException(status_code=502, detail=f"GitNexus error {resp.status_code}: {body}")
         data = resp.json()
 
     job_id = data.get("jobId")
@@ -293,8 +300,9 @@ async def gitnexus_sync_projects(
             clean = _clean_url(raw_url)
             authed = _inject_github_token(raw_url)
             try:
-                resp = await client.post(f"{gitnexus_url}/api/analyze", json={"repoUrl": authed})
-                resp.raise_for_status()
+                resp = await client.post(f"{gitnexus_url}/api/analyze", json={"url": authed})
+                if not resp.is_success:
+                    raise Exception(f"GitNexus {resp.status_code}: {resp.text}")
                 data = resp.json()
                 job_id = data.get("jobId")
                 tracked_by_url[clean] = {"url": clean, "job_id": job_id, "status": "queued", "indexed_at": None}
