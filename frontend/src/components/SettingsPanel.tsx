@@ -6,7 +6,7 @@ interface Props {
   onClose: () => void
 }
 
-type Tab = 'general' | 'docformat' | 'network' | 'gitnexus'
+type Tab = 'general' | 'docformat' | 'network' | 'gitnexus' | 'healthcheck'
 
 const DEFAULT_DOC_FORMAT: DocFormatSettings = {
   title_font_size: 24,
@@ -510,7 +510,7 @@ export default function SettingsPanel({ onClose }: Props) {
   }
 
   useEffect(() => {
-    if (tab === 'gitnexus') loadScanHistory()
+    if (tab === 'healthcheck') loadScanHistory()
   }, [tab])
 
   const handleSave = async () => {
@@ -529,6 +529,7 @@ export default function SettingsPanel({ onClose }: Props) {
     { id: 'docformat', label: 'Document Formatting' },
     { id: 'network', label: 'Network Share' },
     { id: 'gitnexus', label: 'GitNexus' },
+    { id: 'healthcheck', label: 'Repo Health' },
   ]
 
   return (
@@ -1007,7 +1008,24 @@ export default function SettingsPanel({ onClose }: Props) {
                   )}
                 </div>
 
-                {/* Repository Health Checks */}
+                {/* Setup note */}
+                <div style={{ padding: '14px 16px', backgroundColor: '#0d1f3c', borderRadius: '8px', border: '1px solid #1e3a5f' }}>
+                  <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
+                    Docker Setup
+                  </p>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.6 }}>
+                    Add <code style={{ color: '#7dd3fc', fontSize: '11px' }}>COMPOSE_PROFILES=gitnexus</code> to Portainer environment variables
+                    and redeploy to start the bundled GitNexus container at{' '}
+                    <code style={{ color: '#7dd3fc', fontSize: '11px' }}>http://gitnexus:4747</code>.
+                    Private repos are accessed using your BaumAgent GitHub token automatically.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {/* ── Repo Health ── */}
+            {tab === 'healthcheck' && (
+              <>
                 <div style={s.sectionBlock}>
                   <p style={s.sectionTitle}>Repository Health Checks</p>
                   <p style={s.mutedNote}>
@@ -1016,7 +1034,6 @@ export default function SettingsPanel({ onClose }: Props) {
                     Results appear in the Tasks list tagged <strong style={{ color: '#e2e8f0' }}>[Health Scan]</strong>.
                   </p>
 
-                  {/* Schedule toggle */}
                   <div style={s.checkboxRow}>
                     <input style={s.checkbox} type="checkbox" id="health_schedule"
                       checked={settings.gitnexus?.health?.schedule_enabled ?? false}
@@ -1032,7 +1049,7 @@ export default function SettingsPanel({ onClose }: Props) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ ...s.label, minWidth: 'auto', color: '#64748b', fontSize: '12px' }}>Every</span>
                           <select style={{ ...s.select, flex: 'none', width: '120px', fontSize: '12px' }}
-                            value={settings.gitnexus.health?.day_of_week ?? 1}
+                            value={settings.gitnexus?.health?.day_of_week ?? 1}
                             onChange={e => setHealth('day_of_week', parseInt(e.target.value))}>
                             {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((d, i) => (
                               <option key={i} value={i}>{d}</option>
@@ -1042,7 +1059,7 @@ export default function SettingsPanel({ onClose }: Props) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <span style={{ color: '#64748b', fontSize: '12px' }}>at</span>
                           <select style={{ ...s.select, flex: 'none', width: '90px', fontSize: '12px' }}
-                            value={settings.gitnexus.health?.scan_hour ?? 2}
+                            value={settings.gitnexus?.health?.scan_hour ?? 2}
                             onChange={e => setHealth('scan_hour', parseInt(e.target.value))}>
                             {Array.from({ length: 24 }, (_, h) => (
                               <option key={h} value={h}>{String(h).padStart(2, '0')}:00 UTC</option>
@@ -1050,7 +1067,7 @@ export default function SettingsPanel({ onClose }: Props) {
                           </select>
                         </div>
                       </div>
-                      {settings.gitnexus.health?.last_scan_at && (
+                      {settings.gitnexus?.health?.last_scan_at && (
                         <div style={{ color: '#475569', fontSize: '11px', marginTop: '6px' }}>
                           Last ran: {new Date(settings.gitnexus.health.last_scan_at).toLocaleString()}
                         </div>
@@ -1058,7 +1075,6 @@ export default function SettingsPanel({ onClose }: Props) {
                     </div>
                   )}
 
-                  {/* Run now */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '4px', flexWrap: 'wrap' as const }}>
                     <button
                       onClick={handleRunScan}
@@ -1066,6 +1082,9 @@ export default function SettingsPanel({ onClose }: Props) {
                       style={{ ...s.actionBtn, opacity: settings.gitnexus?.enabled ? 1 : 0.45 }}>
                       {scanRunning ? 'Starting scans…' : 'Run Now'}
                     </button>
+                    {!settings.gitnexus?.enabled && (
+                      <span style={{ fontSize: '12px', color: '#475569' }}>Enable GitNexus on the GitNexus tab first</span>
+                    )}
                     {scanResult && scanResult.run_at && (
                       <span style={{ fontSize: '12px', color: '#4ade80' }}>
                         Started {scanResult.count} scan task{scanResult.count !== 1 ? 's' : ''}
@@ -1075,49 +1094,38 @@ export default function SettingsPanel({ onClose }: Props) {
                       <span style={{ fontSize: '12px', color: '#f87171' }}>Failed to start scans</span>
                     )}
                   </div>
-
-                  {/* Scan history */}
-                  {!scanHistoryLoading && scanHistory.length > 0 && (
-                    <div style={{ marginTop: '16px' }}>
-                      <div style={{ fontSize: '11px', fontWeight: 700, color: '#475569', textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: '8px' }}>
-                        Recent Scans
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '6px' }}>
-                        {scanHistory.slice(0, 5).map((run, i) => {
-                          const complete = run.tasks.filter(t => t.status === 'complete').length
-                          const failed = run.tasks.filter(t => t.status === 'failed').length
-                          const running = run.tasks.filter(t => t.status === 'running' || t.status === 'queued').length
-                          return (
-                            <div key={i} style={{
-                              backgroundColor: '#0d1f3c', borderRadius: '6px',
-                              padding: '8px 12px', border: '1px solid #1e3a5f',
-                              display: 'flex', alignItems: 'center', gap: '10px',
-                            }}>
-                              <span style={{ flex: 1, fontSize: '12px', color: '#94a3b8' }}>
-                                {new Date(run.run_at).toLocaleString()}
-                              </span>
-                              <span style={{ fontSize: '11px', color: '#4ade80' }}>{complete} done</span>
-                              {running > 0 && <span style={{ fontSize: '11px', color: '#7dd3fc' }}>{running} running</span>}
-                              {failed > 0 && <span style={{ fontSize: '11px', color: '#f87171' }}>{failed} failed</span>}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                {/* Setup note */}
-                <div style={{ padding: '14px 16px', backgroundColor: '#0d1f3c', borderRadius: '8px', border: '1px solid #1e3a5f' }}>
-                  <p style={{ margin: '0 0 6px', fontSize: '12px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>
-                    Docker Setup
-                  </p>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.6 }}>
-                    Add <code style={{ color: '#7dd3fc', fontSize: '11px' }}>COMPOSE_PROFILES=gitnexus</code> to Portainer environment variables
-                    and redeploy to start the bundled GitNexus container at{' '}
-                    <code style={{ color: '#7dd3fc', fontSize: '11px' }}>http://gitnexus:4747</code>.
-                    Private repos are accessed using your BaumAgent GitHub token automatically.
-                  </p>
+                <div style={s.sectionBlock}>
+                  <p style={s.sectionTitle}>Scan History</p>
+                  {scanHistoryLoading ? (
+                    <div style={{ color: '#475569', fontSize: '13px', padding: '12px 0' }}>Loading…</div>
+                  ) : scanHistory.length === 0 ? (
+                    <div style={{ color: '#475569', fontSize: '13px', padding: '12px 0' }}>No scans have run yet.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '6px' }}>
+                      {scanHistory.slice(0, 10).map((run, i) => {
+                        const complete = run.tasks.filter(t => t.status === 'complete').length
+                        const failed = run.tasks.filter(t => t.status === 'failed').length
+                        const running = run.tasks.filter(t => t.status === 'running' || t.status === 'queued').length
+                        return (
+                          <div key={i} style={{
+                            backgroundColor: '#0d1f3c', borderRadius: '6px',
+                            padding: '10px 14px', border: '1px solid #1e3a5f',
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                          }}>
+                            <span style={{ flex: 1, fontSize: '12px', color: '#94a3b8' }}>
+                              {new Date(run.run_at).toLocaleString()}
+                            </span>
+                            <span style={{ fontSize: '11px', color: '#64748b' }}>{run.tasks.length} repo{run.tasks.length !== 1 ? 's' : ''}</span>
+                            {complete > 0 && <span style={{ fontSize: '11px', color: '#4ade80' }}>{complete} done</span>}
+                            {running > 0 && <span style={{ fontSize: '11px', color: '#7dd3fc' }}>{running} running</span>}
+                            {failed > 0 && <span style={{ fontSize: '11px', color: '#f87171' }}>{failed} failed</span>}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               </>
             )}
