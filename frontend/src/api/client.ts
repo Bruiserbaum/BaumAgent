@@ -139,6 +139,51 @@ export interface GitNexusSyncResult {
   results: { url: string; job_id?: string; error?: string; status?: string }[]
 }
 
+export interface GnRepoStats {
+  name: string
+  indexedAt?: string
+  stats?: { totalNodes?: number; totalFiles?: number; totalEdges?: number }
+}
+
+export interface GnProcess {
+  name?: string
+  label?: string
+  id?: string
+  [key: string]: unknown
+}
+
+export interface GnCluster {
+  name?: string
+  label?: string
+  id?: string
+  [key: string]: unknown
+}
+
+export interface GnRepoInfo {
+  repo: GnRepoStats | null
+  processes: GnProcess[]
+  clusters: GnCluster[]
+}
+
+export interface GnSearchHit {
+  id?: string
+  name?: string
+  score?: number
+  connections?: { outgoing: unknown[]; incoming: unknown[] }
+}
+
+export interface GnSearchResult {
+  results: GnSearchHit[]
+  ftsAvailable?: boolean
+}
+
+export interface GnImportResult {
+  indexed: number
+  errors: number
+  total: number
+  results: { url: string; name: string; job_id?: string; error?: string; status?: string }[]
+}
+
 export interface PortalSettings {
   default_llm_backend: string
   default_llm_model: string
@@ -332,6 +377,28 @@ export const api = {
 
   gitnexusScanHistory: (): Promise<ScanHistoryRun[]> =>
     fetch(`${BASE}/gitnexus/scan/history`).then(r => r.json()),
+
+  gitnexusRepoInfo: (repo_url: string): Promise<GnRepoInfo> =>
+    fetch(`${BASE}/gitnexus/repo-info?${new URLSearchParams({ repo_url })}`).then(async r => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    }),
+
+  gitnexusSearchIndex: (repo_url: string, query: string, limit = 10): Promise<GnSearchResult> =>
+    fetch(`${BASE}/gitnexus/search-index`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repo_url, query, limit, mode: 'hybrid' }),
+    }).then(async r => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    }),
+
+  gitnexusImportGithub: (): Promise<GnImportResult> =>
+    fetch(`${BASE}/gitnexus/import-github`, { method: 'POST' }).then(async r => {
+      if (!r.ok) throw new Error(await r.text())
+      return r.json()
+    }),
 
   uploadDocument: async (file: File): Promise<DocumentAttachment> => {
     const formData = new FormData()

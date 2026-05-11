@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api, PortalSettings, DocFormatSettings, SMBSettings, GitNexusSettings, GitNexusTrackedRepo, GitNexusSyncResult, RepoHealthSettings, ScanHistoryRun, ModelsResponse } from '../api/client'
+import { api, PortalSettings, DocFormatSettings, SMBSettings, GitNexusSettings, GitNexusTrackedRepo, GitNexusSyncResult, GnRepoInfo, GnSearchResult, GnImportResult, RepoHealthSettings, ScanHistoryRun, ModelsResponse } from '../api/client'
 import { modelOptionLabel } from '../api/modelMeta'
 
 interface Props {
@@ -308,6 +308,18 @@ export default function SettingsPanel({ onClose }: Props) {
   const [scanHistory, setScanHistory] = useState<ScanHistoryRun[]>([])
   const [scanHistoryLoading, setScanHistoryLoading] = useState(false)
 
+  // Index browser
+  const [viewingRepo, setViewingRepo] = useState<string | null>(null)
+  const [repoInfo, setRepoInfo] = useState<GnRepoInfo | null>(null)
+  const [repoInfoLoading, setRepoInfoLoading] = useState(false)
+  const [indexQuery, setIndexQuery] = useState('')
+  const [indexSearchResult, setIndexSearchResult] = useState<GnSearchResult | null>(null)
+  const [indexSearching, setIndexSearching] = useState(false)
+
+  // GitHub import
+  const [ghImporting, setGhImporting] = useState(false)
+  const [ghImportResult, setGhImportResult] = useState<GnImportResult | null>(null)
+
   useEffect(() => {
     Promise.all([api.getSettings(), api.getModels()])
       .then(([data, mods]) => {
@@ -409,6 +421,51 @@ export default function SettingsPanel({ onClose }: Props) {
       await api.gitnexusReindex(url)
       await loadGnRepos()
     } catch { }
+  }
+
+  const handleViewRepo = async (url: string) => {
+    setViewingRepo(url)
+    setRepoInfo(null)
+    setIndexQuery('')
+    setIndexSearchResult(null)
+    setRepoInfoLoading(true)
+    try {
+      const info = await api.gitnexusRepoInfo(url)
+      setRepoInfo(info)
+    } catch {
+      setRepoInfo({ repo: null, processes: [], clusters: [] })
+    } finally {
+      setRepoInfoLoading(false)
+    }
+  }
+
+  const handleIndexSearch = async () => {
+    if (!viewingRepo || !indexQuery.trim()) return
+    setIndexSearching(true)
+    setIndexSearchResult(null)
+    try {
+      const res = await api.gitnexusSearchIndex(viewingRepo, indexQuery.trim())
+      setIndexSearchResult(res)
+    } catch {
+      setIndexSearchResult({ results: [] })
+    } finally {
+      setIndexSearching(false)
+    }
+  }
+
+  const handleImportGithub = async () => {
+    setGhImporting(true)
+    setGhImportResult(null)
+    try {
+      await api.updateSettings(settings)
+      const result = await api.gitnexusImportGithub()
+      setGhImportResult(result)
+      await loadGnRepos()
+    } catch (err: any) {
+      setGhImportResult({ indexed: 0, errors: 1, total: 0, results: [{ url: '', name: '', error: err.message }] })
+    } finally {
+      setGhImporting(false)
+    }
   }
 
   const handleRemoveRepo = async (url: string) => {
@@ -807,6 +864,10 @@ export default function SettingsPanel({ onClose }: Props) {
                       style={{ ...s.actionBtn, opacity: settings.gitnexus?.enabled ? 1 : 0.45 }}>
                       {gnSyncing ? 'Syncing…' : 'Sync from Task History'}
                     </button>
+                    <button onClick={handleImportGithub} disabled={ghImporting || !settings.gitnexus?.enabled}
+                      style={{ ...s.actionBtn, opacity: settings.gitnexus?.enabled ? 1 : 0.45 }}>
+                      {ghImporting ? 'Importing…' : 'Import My GitHub Repos'}
+                    </button>
                     {gnStatus && (
                       <span style={{ fontSize: '13px', color: gnStatus.connected ? '#4ade80' : '#f87171', fontWeight: 600 }}>
                         {gnStatus.connected ? '● Connected' : '● Not reachable'}
@@ -823,6 +884,16 @@ export default function SettingsPanel({ onClose }: Props) {
                           : <>Queued <strong style={{ color: '#e2e8f0' }}>{gnSyncResult.indexed}</strong> repo(s)
                             {gnSyncResult.errors > 0 && <span style={{ color: '#f87171' }}> · {gnSyncResult.errors} failed</span>}
                           </>
+                      }
+                    </div>
+                  )}
+                  {ghImportResult && (
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px', lineHeight: 1.6 }}>
+                      {ghImportResult.errors > 0 && ghImportResult.indexed === 0
+                        ? <span style={{ color: '#f87171' }}>{ghImportResult.results[0]?.error || 'Import failed'}</span>
+                        : <>Queued <strong style={{ color: '#e2e8f0' }}>{ghImportResult.indexed}</strong> of <strong style={{ color: '#e2e8f0' }}>{ghImportResult.total}</strong> repos
+                          {ghImportResult.errors > 0 && <span style={{ color: '#f87171' }}> · {ghImportResult.errors} failed</span>}
+                        </>
                       }
                     </div>
                   )}
@@ -874,6 +945,9 @@ export default function SettingsPanel({ onClose }: Props) {
                           failed: 'Failed',
                           unknown: 'Unknown',
                         }[repo.status] ?? repo.status
+                        const statusTitle = repo.status === 'failed'
+                          ? 'GitNexus could not clone or analyze this repo. Common causes: private repo without token access, network error, or analysis timeout. Try re-indexing.'
+                          : undefined
 
                         const repoName = repo.url.replace('https://github.com/', '').replace(/\/$/, '')
 
@@ -886,7 +960,7 @@ export default function SettingsPanel({ onClose }: Props) {
                             <span style={{ flex: 1, fontSize: '13px', color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const }}>
                               {repoName}
                             </span>
-                            <span style={{ fontSize: '11px', color: statusColor, fontWeight: 600, flexShrink: 0 }}>
+                            <span title={statusTitle} style={{ fontSize: '11px', color: statusColor, fontWeight: 600, flexShrink: 0, cursor: statusTitle ? 'help' : 'default' }}>
                               ● {statusLabel}
                             </span>
                             {repo.status === 'complete' && (
@@ -903,6 +977,13 @@ export default function SettingsPanel({ onClose }: Props) {
                               <span style={{ fontSize: '11px', color: '#475569', flexShrink: 0 }}>
                                 {new Date(repo.indexed_at).toLocaleDateString()}
                               </span>
+                            )}
+                            {repo.status === 'complete' && (
+                              <button onClick={() => handleViewRepo(repo.url)}
+                                title="Browse index"
+                                style={{ background: 'none', border: 'none', color: '#7dd3fc', cursor: 'pointer', fontSize: '13px', padding: '0 2px', flexShrink: 0 }}>
+                                🔍
+                              </button>
                             )}
                             <button onClick={() => handleReindex(repo.url)}
                               title="Re-index"
@@ -1050,6 +1131,117 @@ export default function SettingsPanel({ onClose }: Props) {
         <button style={s.cancelBtn} onClick={onClose}>Cancel</button>
         <button style={s.saveBtn} onClick={handleSave}>Save</button>
       </div>
+
+      {/* Index Browser Modal */}
+      {viewingRepo && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.72)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#16213e', border: '1px solid #1e3a5f', borderRadius: '12px', width: '700px', maxWidth: '96vw', maxHeight: '88dvh', display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' }}>
+
+            {/* Modal header */}
+            <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid #1e3a5f', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+              <div>
+                <p style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#e2e8f0' }}>Index Browser</p>
+                <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#475569' }}>
+                  {viewingRepo.replace('https://github.com/', '')}
+                </p>
+              </div>
+              <button onClick={() => { setViewingRepo(null); setRepoInfo(null); setIndexSearchResult(null); setIndexQuery('') }}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '20px', lineHeight: 1, flexShrink: 0 }}>✕</button>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ overflowY: 'auto' as const, flex: 1, padding: '20px 24px' }}>
+              {repoInfoLoading ? (
+                <div style={{ color: '#475569', fontSize: '13px' }}>Loading index data…</div>
+              ) : !repoInfo || (!repoInfo.repo && !repoInfo.processes.length && !repoInfo.clusters.length) ? (
+                <div style={{ color: '#f87171', fontSize: '13px' }}>Could not load index data. The repo may still be indexing.</div>
+              ) : (
+                <>
+                  {/* Stats row */}
+                  {repoInfo.repo && (
+                    <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' as const }}>
+                      {[
+                        { label: 'Nodes', value: repoInfo.repo.stats?.totalNodes, color: '#7dd3fc' },
+                        { label: 'Files', value: repoInfo.repo.stats?.totalFiles, color: '#7dd3fc' },
+                        { label: 'Processes', value: repoInfo.processes.length, color: '#4ade80' },
+                        { label: 'Clusters', value: repoInfo.clusters.length, color: '#fbbf24' },
+                      ].map(stat => (
+                        <div key={stat.label} style={{ background: '#0d1f3c', borderRadius: '8px', padding: '10px 16px', border: '1px solid #1e3a5f', minWidth: '100px', textAlign: 'center' as const }}>
+                          <div style={{ fontSize: '20px', fontWeight: 700, color: stat.color }}>{stat.value ?? '—'}</div>
+                          <div style={{ fontSize: '11px', color: '#475569', marginTop: '2px' }}>{stat.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Search */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <p style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em', margin: '0 0 8px' }}>Search Index</p>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input
+                        style={{ flex: 1, background: '#0f172a', border: '1px solid #1e3a5f', borderRadius: '6px', color: '#e2e8f0', padding: '8px 12px', fontSize: '13px', outline: 'none' }}
+                        placeholder="Search functions, files, concepts…"
+                        value={indexQuery}
+                        onChange={e => { setIndexQuery(e.target.value); setIndexSearchResult(null) }}
+                        onKeyDown={e => e.key === 'Enter' && handleIndexSearch()}
+                      />
+                      <button onClick={handleIndexSearch} disabled={indexSearching || !indexQuery.trim()}
+                        style={{ background: '#1e3a5f', border: 'none', borderRadius: '6px', color: '#7dd3fc', padding: '8px 16px', cursor: 'pointer', fontSize: '13px', fontWeight: 600, opacity: indexQuery.trim() ? 1 : 0.5 }}>
+                        {indexSearching ? '…' : 'Search'}
+                      </button>
+                    </div>
+                    {indexSearchResult && (
+                      <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column' as const, gap: '5px' }}>
+                        {indexSearchResult.results.length === 0
+                          ? <div style={{ color: '#475569', fontSize: '12px' }}>No results found.</div>
+                          : indexSearchResult.results.map((r, i) => (
+                            <div key={r.id ?? i} style={{ background: '#0d1f3c', borderRadius: '6px', padding: '8px 12px', border: '1px solid #1e3a5f', display: 'flex', justifyContent: 'space-between' as const, alignItems: 'center' }}>
+                              <span style={{ color: '#e2e8f0', fontSize: '13px', fontWeight: 500 }}>{r.name ?? '(unnamed)'}</span>
+                              <span style={{ color: '#475569', fontSize: '11px' }}>score {r.score?.toFixed(3)}</span>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Processes */}
+                  {repoInfo.processes.length > 0 && (
+                    <div style={{ marginBottom: '20px' }}>
+                      <p style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em', margin: '0 0 8px' }}>
+                        Processes ({repoInfo.processes.length})
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column' as const, gap: '4px' }}>
+                        {repoInfo.processes.map((p, i) => (
+                          <div key={i} style={{ background: '#0d1f3c', borderRadius: '6px', padding: '7px 12px', border: '1px solid #1e3a5f' }}>
+                            <span style={{ color: '#e2e8f0', fontSize: '13px' }}>{String(p.name ?? p.label ?? p)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Clusters */}
+                  {repoInfo.clusters.length > 0 && (
+                    <div style={{ marginBottom: '8px' }}>
+                      <p style={{ fontSize: '11px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase' as const, letterSpacing: '0.05em', margin: '0 0 8px' }}>
+                        Clusters ({repoInfo.clusters.length})
+                      </p>
+                      <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: '6px' }}>
+                        {repoInfo.clusters.map((c, i) => (
+                          <span key={i} style={{ background: '#0d1f3c', border: '1px solid #1e3a5f', borderRadius: '12px', padding: '3px 12px', fontSize: '12px', color: '#94a3b8' }}>
+                            {String(c.name ?? c.label ?? c)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

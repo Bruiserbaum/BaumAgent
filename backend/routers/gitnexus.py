@@ -433,3 +433,118 @@ async def scan_history(
             ],
         })
     return result
+
+
+# ---------------------------------------------------------------------------
+# Index browser & GitHub import
+# ---------------------------------------------------------------------------
+
+class IndexSearchRequest(BaseModel):
+    repo_url: str
+    query: str
+    limit: int = 10
+    mode: str = "hybrid"
+
+
+@router.get("/repo-info")
+async def gitnexus_repo_info(
+    repo_url: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Return GitNexus stats, processes, and clusters for an indexed repo."""
+    gitnexus_url = _resolve_gitnexus_url(current_user)
+    repo_name = _clean_url(repo_url).rstrip("/").split("/")[-1]
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        repo_resp = await client.get(f"{gitnexus_url}/api/repo", params={"repo": repo_name})
+        proc_resp = await client.get(f"{gitnexus_url}/api/processes", params={"repo": repo_name})
+        clus_resp = await client.get(f"{gitnexus_url}/api/clusters", params={"repo": repo_name})
+
+    return {
+        "repo": repo_resp.json() if repo_resp.is_success else None,
+        "processes": proc_resp.json() if proc_resp.is_success else [],
+        "clusters": clus_resp.json() if clus_resp.is_success else [],
+    }
+
+
+@router.post("/search-index")
+async def gitnexus_search_index(
+    req: IndexSearchRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Proxy a hybrid search to GitNexus for a specific repo."""
+    gitnexus_url = _resolve_gitnexus_url(current_user)
+    repo_name = _clean_url(req.repo_url).rstrip("/").split("/")[-1]
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(f"{gitnexus_url}/api/search", json={
+            "query": req.query,
+            "repo": repo_name,
+            "limit": req.limit,
+            "mode": req.mode,
+        })
+        if not resp.is_success:
+            raise HTTPException(status_code=502, detail=f"GitNexus search error: {resp.text}")
+        return resp.json()
+
+
+@router.post("/import-github")
+async def gitnexus_import_github(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Fetch all repos for the authenticated GitHub user and submit them to GitNexus."""
+    gitnexus_url = _resolve_gitnexus_url(current_user)
+    cfg = get_settings()
+    token = cfg.github_token
+    if not token:
+        raise HTTPException(status_code=400, detail="No GitHub token configured.")
+
+    all_repos: list[dict] = []
+    page = 1
+    async with httpx.AsyncClient(timeout=30) as client:
+        while True:
+            resp = await client.get(
+                "https://api.github.com/user/repos",
+                headers={"Authorization": f"token {token}", "User-Agent": "BaumAgent/1.0"},
+                params={"per_page": 100, "page": page, "type": "all", "sort": "updated"},
+            )
+            if not resp.is_success:
+                raise HTTPException(status_code=502, detail=f"GitHub API error: {resp.text}")
+            batch = resp.json()
+            if not batch:
+                break
+            all_repos.extend(batch)
+            page += 1
+            if len(batch) < 100:
+                break
+
+    user_settings, gn = _load_gn_settings(current_user)
+    tracked: list[dict] = gn.get("tracked_repos", [])
+    tracked_by_url = {_clean_url(r.get("url", "")): r for r in tracked}
+
+    results: list[dict] = []
+    async with httpx.AsyncClient(timeout=60) as client:
+        for repo in all_repos:
+            raw_url = repo.get("html_url", "").rstrip("/")
+            if not raw_url:
+                continue
+            clean = _clean_url(raw_url)
+            authed = _inject_github_token(raw_url)
+            try:
+                resp = await client.post(f"{gitnexus_url}/api/analyze", json={"url": authed})
+                if not resp.is_success:
+                    raise Exception(f"GitNexus {resp.status_code}: {resp.text}")
+                data = resp.json()
+                job_id = data.get("jobId")
+                tracked_by_url[clean] = {"url": clean, "job_id": job_id, "status": "queued", "indexed_at": None}
+                results.append({"url": clean, "name": repo.get("name", ""), "job_id": job_id, "status": "queued"})
+            except Exception as exc:
+                results.append({"url": clean, "name": repo.get("name", ""), "error": str(exc)})
+
+    _save_tracked_repos(current_user, user_settings, list(tracked_by_url.values()), db)
+    indexed = sum(1 for r in results if "job_id" in r)
+    errors = sum(1 for r in results if "error" in r)
+    return {"indexed": indexed, "errors": errors, "total": len(all_repos), "results": results}
