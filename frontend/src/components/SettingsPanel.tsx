@@ -816,8 +816,14 @@ export default function SettingsPanel({ onClose }: Props) {
 
                   {gnSyncResult && (
                     <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '10px', lineHeight: 1.6 }}>
-                      Queued <strong style={{ color: '#e2e8f0' }}>{gnSyncResult.indexed}</strong> repo(s)
-                      {gnSyncResult.errors > 0 && <span style={{ color: '#f87171' }}> · {gnSyncResult.errors} failed</span>}
+                      {gnSyncResult.errors > 0 && gnSyncResult.indexed === 0
+                        ? <span style={{ color: '#f87171' }}>{gnSyncResult.results[0]?.error || 'Sync failed'}</span>
+                        : gnSyncResult.indexed === 0
+                          ? <span>No code tasks with a repo URL found in history.</span>
+                          : <>Queued <strong style={{ color: '#e2e8f0' }}>{gnSyncResult.indexed}</strong> repo(s)
+                            {gnSyncResult.errors > 0 && <span style={{ color: '#f87171' }}> · {gnSyncResult.errors} failed</span>}
+                          </>
+                      }
                     </div>
                   )}
                 </div>
@@ -836,8 +842,9 @@ export default function SettingsPanel({ onClose }: Props) {
                       onChange={e => { setAddRepoUrl(e.target.value); setAddRepoError('') }}
                       onKeyDown={e => e.key === 'Enter' && handleAddRepo()}
                     />
-                    <button onClick={handleAddRepo} disabled={addRepoLoading || !addRepoUrl.trim()}
-                      style={{ ...s.actionBtn, whiteSpace: 'nowrap' as const, opacity: addRepoUrl.trim() ? 1 : 0.45 }}>
+                    <button onClick={handleAddRepo}
+                      disabled={addRepoLoading || !addRepoUrl.trim() || !settings.gitnexus?.enabled}
+                      style={{ ...s.actionBtn, whiteSpace: 'nowrap' as const, opacity: addRepoUrl.trim() && settings.gitnexus?.enabled ? 1 : 0.45 }}>
                       {addRepoLoading ? 'Adding…' : '+ Index Repo'}
                     </button>
                   </div>

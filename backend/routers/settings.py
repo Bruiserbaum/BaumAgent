@@ -260,6 +260,12 @@ def update_settings(
     existing_fmt = existing.get("doc_format", {})
     new_fmt = payload_dict.get("doc_format", {})
     existing_fmt.update(new_fmt)
+    # Preserve tracked_repos and health — managed exclusively by the gitnexus router
+    existing_gn = existing.get("gitnexus", {})
+    payload_gn = payload_dict.get("gitnexus", {})
+    payload_gn["tracked_repos"] = existing_gn.get("tracked_repos", payload_gn.get("tracked_repos", []))
+    payload_gn["health"] = existing_gn.get("health", payload_gn.get("health", {}))
+    payload_dict["gitnexus"] = payload_gn
     existing.update(payload_dict)
     existing["doc_format"] = existing_fmt
     _save_user_settings(current_user, existing, db)
