@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     default_llm_backend: str = "anthropic"
     default_llm_model: str = "claude-opus-4-6"
 
+    # Claude Code (headless CLI) settings
+    claude_code_max_turns: int = 50
+
     # When true, GET /api/tasks returns all users' tasks (shared queue view).
     team_mode: bool = False
 
