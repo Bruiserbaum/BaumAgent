@@ -4,7 +4,6 @@ GitNexus integration router.
 Powered by GitNexus (https://github.com/abhigyanpatwari/GitNexus) —
 an open-source code intelligence engine by Abhigyan Patwari.
 """
-import asyncio
 import json
 from datetime import datetime, timezone
 from urllib.parse import urlparse, urlunparse
@@ -206,6 +205,27 @@ async def gitnexus_list_repos(
     async with httpx.AsyncClient() as client:
         for repo in repos:
             updated.append(await _poll_repo_status(gitnexus_url, repo, client))
+
+    # Auto-advance the import queue: submit next pending repo when nothing is active
+    has_active = any(r.get("status") in ("queued", "running") for r in updated)
+    if not has_active:
+        pending = [r for r in updated if r.get("status") == "pending"]
+        if pending:
+            authed = _inject_github_token(pending[0]["url"])
+            try:
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post(f"{gitnexus_url}/api/analyze", json={"url": authed})
+                    if resp.is_success:
+                        data = resp.json()
+                        job_id = data.get("jobId")
+                        for r in updated:
+                            if r["url"] == pending[0]["url"]:
+                                r["job_id"] = job_id
+                                r["status"] = "queued"
+                                break
+            except Exception:
+                pass
+
     _save_tracked_repos(current_user, user_settings, updated, db)
     return updated
 
@@ -526,27 +546,41 @@ async def gitnexus_import_github(
     tracked: list[dict] = gn.get("tracked_repos", [])
     tracked_by_url = {_clean_url(r.get("url", "")): r for r in tracked}
 
+    # Add new repos as "pending" without overwriting already-tracked ones
     results: list[dict] = []
-    async with httpx.AsyncClient(timeout=60) as client:
-        for repo in all_repos:
-            raw_url = repo.get("html_url", "").rstrip("/")
-            if not raw_url:
-                continue
-            clean = _clean_url(raw_url)
-            authed = _inject_github_token(raw_url)
-            try:
-                resp = await client.post(f"{gitnexus_url}/api/analyze", json={"url": authed})
-                if not resp.is_success:
-                    raise Exception(f"GitNexus {resp.status_code}: {resp.text}")
-                data = resp.json()
-                job_id = data.get("jobId")
-                tracked_by_url[clean] = {"url": clean, "job_id": job_id, "status": "queued", "indexed_at": None}
-                results.append({"url": clean, "name": repo.get("name", ""), "job_id": job_id, "status": "queued"})
-            except Exception as exc:
-                results.append({"url": clean, "name": repo.get("name", ""), "error": str(exc)})
-            await asyncio.sleep(1)
+    for repo in all_repos:
+        raw_url = repo.get("html_url", "").rstrip("/")
+        if not raw_url:
+            continue
+        clean = _clean_url(raw_url)
+        if clean not in tracked_by_url:
+            tracked_by_url[clean] = {"url": clean, "job_id": None, "status": "pending", "indexed_at": None}
+        results.append({"url": clean, "name": repo.get("name", ""), "status": tracked_by_url[clean].get("status", "pending")})
 
     _save_tracked_repos(current_user, user_settings, list(tracked_by_url.values()), db)
-    indexed = sum(1 for r in results if r.get("job_id") is not None)
-    errors = sum(1 for r in results if "error" in r)
-    return {"indexed": indexed, "errors": errors, "total": len(all_repos), "results": results}
+
+    # Submit only the first pending repo now; list_repos polling advances the rest
+    indexed = 0
+    pending = [r for r in tracked_by_url.values() if r.get("status") == "pending"]
+    if pending:
+        authed = _inject_github_token(pending[0]["url"])
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(f"{gitnexus_url}/api/analyze", json={"url": authed})
+                if resp.is_success:
+                    data = resp.json()
+                    job_id = data.get("jobId")
+                    tracked_by_url[pending[0]["url"]]["job_id"] = job_id
+                    tracked_by_url[pending[0]["url"]]["status"] = "queued"
+                    _save_tracked_repos(current_user, user_settings, list(tracked_by_url.values()), db)
+                    for r in results:
+                        if r["url"] == pending[0]["url"]:
+                            r["job_id"] = job_id
+                            r["status"] = "queued"
+                            break
+                    indexed = 1
+        except Exception:
+            pass
+
+    pending_count = sum(1 for r in results if r.get("status") == "pending")
+    return {"indexed": indexed, "errors": 0, "total": len(all_repos), "results": results, "pending": pending_count}
