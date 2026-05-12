@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Task, api } from '../api/client'
+import { sanitizeLog } from '../utils/sanitizeLog'
 
 const copyBtn: React.CSSProperties = {
   backgroundColor: '#0d2040',
@@ -91,6 +92,9 @@ export default function TaskDetail({ task }: Props) {
   const [fixError, setFixError] = useState('')
   const termRef = useRef<HTMLDivElement>(null)
   const wsRef = useRef<WebSocket | null>(null)
+
+  // Sanitize log text: detect embedded HTML and convert to readable plain text
+  const displayLog = useMemo(() => sanitizeLog(log), [log])
 
   const handleFixIssues = async () => {
     setFixLoading(true)
@@ -257,10 +261,18 @@ export default function TaskDetail({ task }: Props) {
             <span style={fieldValue}>{task.branch_name}</span>
           </div>
         )}
+        {task.pr_url && (
+          <div style={fieldRow}>
+            <span style={fieldLabel}>Pull Request</span>
+            <a href={task.pr_url} target="_blank" rel="noreferrer" style={prLinkStyle}>
+              {task.pr_url}
+            </a>
+          </div>
+        )}
         {task.commit_sha && (
           <div style={fieldRow}>
             <span style={fieldLabel}>Commit</span>
-            <span style={fieldValue}>{task.commit_sha.slice(0, 12)}</span>
+            <span style={fieldValue}>{task.commit_sha}</span>
           </div>
         )}
         {task.error_message && (
@@ -269,111 +281,63 @@ export default function TaskDetail({ task }: Props) {
             <span style={{ ...fieldValue, color: '#f87171' }}>{task.error_message}</span>
           </div>
         )}
+      </div>
 
-        {(liveStatus === 'failed' || liveStatus === 'complete' || liveStatus === 'cancelled') && (
-          <div style={{ marginTop: '12px' }}>
-            <button
-              onClick={async () => { await api.retryTask(task.id) }}
-              style={{
-                backgroundColor: '#1e3a5f',
-                color: '#60a5fa',
-                border: '1px solid #2563eb',
-                borderRadius: '6px',
-                padding: '7px 20px',
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: '14px',
-              }}
-            >
-              {task.status === 'complete' ? '↻ Re-run Task' : '↻ Retry Task'}
-            </button>
-          </div>
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+        {task.output_file && (
+          <button style={downloadBtn} onClick={() => api.downloadTask(task.id)}>
+            ⬇ Download Export
+          </button>
         )}
-
-        {/* Health Scan — Fix Issues banner */}
-        {isHealthScan(task) && liveStatus === 'complete' && !fixTaskId && (
-          <div style={{
-            marginTop: '16px', padding: '14px 16px',
-            backgroundColor: '#1a0d2e', border: '1px solid #6d28d9',
-            borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
-          }}>
-            <span style={{ color: '#c4b5fd', fontWeight: 600, flex: 1 }}>
-              Audit complete — grant permission to fix all found issues?
-            </span>
-            <button
-              onClick={handleFixIssues}
-              disabled={fixLoading}
-              style={{
-                backgroundColor: '#5b21b6', color: '#ede9fe',
-                border: '1px solid #7c3aed', borderRadius: '6px',
-                padding: '8px 20px', cursor: 'pointer',
-                fontWeight: 700, fontSize: '14px', whiteSpace: 'nowrap',
-              }}
-            >
-              {fixLoading ? 'Creating fix task…' : '⚡ Fix Issues'}
-            </button>
-            {fixError && <span style={{ color: '#f87171', fontSize: '13px' }}>{fixError}</span>}
-          </div>
+        {task.task_type === 'coding' && task.output_file && (
+          <button style={copyBtn} onClick={handleCopyScript}>{copyLabel}</button>
         )}
-
-        {/* Fix task created confirmation */}
-        {fixTaskId && (
-          <div style={{
-            marginTop: '16px', padding: '14px 16px',
-            backgroundColor: '#0d2818', border: '1px solid #166534',
-            borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
-          }}>
-            <span style={{ color: '#4ade80', fontWeight: 600 }}>Fix task queued!</span>
-            <span style={{ color: '#94a3b8', fontSize: '13px' }}>
-              Task ID: <code style={{ color: '#7dd3fc', fontSize: '12px' }}>{fixTaskId.slice(0, 8)}…</code>
-              {' '}— find it in the Tasks list tagged <strong>[Health Fix]</strong>.
-            </span>
-          </div>
+        {liveStatus === 'running' && (
+          <button
+            style={{ ...copyBtn, color: '#f59e0b', borderColor: '#92400e' }}
+            onClick={() => api.cancelTask(task.id)}
+          >
+            ✕ Cancel
+          </button>
         )}
-
-        {task.pr_url && (
-          <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: '#0d2818', border: '1px solid #166534', borderRadius: '8px' }}>
-            <span style={{ color: '#4ade80', fontWeight: 600, marginRight: '10px' }}>Pull Request Opened:</span>
-            <a style={prLinkStyle} href={task.pr_url} target="_blank" rel="noopener noreferrer">
-              PR #{task.pr_number} &rarr;
-            </a>
-          </div>
-        )}
-
-        {(task.task_type === 'research' && task.status === 'complete') && (
-          <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: '#0d2818', border: '1px solid #166534', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <span style={{ color: '#4ade80', fontWeight: 600 }}>Research report ready</span>
-            <button style={downloadBtn} onClick={() => api.downloadTask(task.id)}>
-              &#x2B07; Download Report
-            </button>
-          </div>
-        )}
-
-        {(task.task_type === 'instructions' && task.status === 'complete') && (
-          <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: '#0d1f33', border: '1px solid #1e4d8c', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <span style={{ color: '#7dd3fc', fontWeight: 600 }}>Instructions document ready</span>
-            <button style={downloadBtn} onClick={() => api.downloadTask(task.id)}>
-              &#x2B07; Download .docx
-            </button>
-          </div>
-        )}
-
-        {(task.task_type === 'coding' && task.status === 'complete') && (
-          <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: '#091428', border: '1px solid #1e4d8c', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <span style={{ color: '#7dd3fc', fontWeight: 600 }}>Script ready</span>
-            <button style={copyBtn} onClick={handleCopyScript}>
-              &#x2398; {copyLabel}
-            </button>
-            <button style={downloadBtn} onClick={() => api.downloadTask(task.id)}>
-              &#x2B07; Download
-            </button>
-          </div>
+        {liveStatus === 'failed' && (
+          <button
+            style={{ ...copyBtn, color: '#60a5fa', borderColor: '#1e4d8c' }}
+            onClick={() => api.retryTask(task.id)}
+          >
+            ↻ Retry
+          </button>
         )}
       </div>
 
-      <h3 style={{ color: '#7dd3fc', margin: '0 0 10px', fontSize: '15px' }}>Agent Log</h3>
-      <div style={terminal} ref={termRef}>
-        {log || '(waiting for output...)'}
+      {/* Health scan fix button */}
+      {isHealthScan(task) && liveStatus === 'complete' && (
+        <div style={{ marginBottom: '16px' }}>
+          <button
+            style={{ ...downloadBtn, backgroundColor: '#1e1b3a', color: '#a78bfa', borderColor: '#5b21b6' }}
+            onClick={handleFixIssues}
+            disabled={fixLoading}
+          >
+            {fixLoading ? 'Creating fix task…' : '🔧 Auto-Fix Issues'}
+          </button>
+          {fixTaskId && (
+            <span style={{ marginLeft: '12px', color: '#4ade80', fontSize: '13px' }}>
+              Fix task created: {fixTaskId}
+            </span>
+          )}
+          {fixError && (
+            <span style={{ marginLeft: '12px', color: '#f87171', fontSize: '13px' }}>
+              {fixError}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Agent Log */}
+      <h3 style={{ color: '#a3e635', fontSize: '15px', marginBottom: '8px' }}>Agent Log</h3>
+      <div ref={termRef} style={terminal}>
+        {displayLog || (liveStatus === 'queued' ? 'Waiting in queue…' : 'Waiting for log output…')}
       </div>
     </div>
   )

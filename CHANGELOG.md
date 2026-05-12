@@ -2,6 +2,16 @@
 
 All notable changes to BaumAgent will be documented in this file.
 
+## [0.6.1] — 2025-07-14
+
+### Added
+- **Agent Log HTML sanitizer**: When the Agent Log contains embedded HTML (e.g. from server error responses returning HTML pages instead of JSON), it is now automatically detected and converted to clean, readable plain text before display.
+- New `sanitizeLog` utility (`frontend/src/utils/sanitizeLog.ts`) that uses the browser's `DOMParser` to extract meaningful text content from HTML fragments, with a regex-based fallback.
+- New reusable `LogTerminal` component (`frontend/src/components/LogTerminal.tsx`) that wraps the sanitization logic with `forwardRef` support.
+
+### Changed
+- `TaskDetail.tsx` now passes log text through `sanitizeLog()` via `useMemo` before rendering in the Agent Log terminal, so HTML-heavy log output appears as structured plain text instead of raw markup.
+
 ## [0.6.0] — 2025-07-13
 
 ### Added
